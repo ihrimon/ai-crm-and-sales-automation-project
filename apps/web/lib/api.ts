@@ -7,20 +7,30 @@ import type {
   ContactList,
   CreateCompanyRequest,
   CreateContactRequest,
+  CreateDealRequest,
   CreateLeadRequest,
   CreateOrganizationRequest,
+  CreatePipelineStageRequest,
+  Deal,
+  DealList,
   InviteMemberRequest,
   Lead,
   LeadList,
   LoginRequest,
+  MoveDealRequest,
   Organization,
   OrganizationMember,
   OrganizationMemberList,
   OrgRole,
+  Pipeline,
+  PipelineMetrics,
+  PipelineStage,
   RegisterRequest,
   UpdateCompanyRequest,
   UpdateContactRequest,
+  UpdateDealRequest,
   UpdateLeadRequest,
+  UpdatePipelineStageRequest,
   User,
 } from '@ai-crm/types';
 
@@ -272,4 +282,92 @@ export async function updateCompany(accessToken: string, companyId: string, payl
 export async function deleteCompany(accessToken: string, companyId: string): Promise<void> {
   const res = await authorizedFetch(`/companies/${companyId}`, accessToken, { method: 'DELETE' });
   if (!res.ok) return parseErrorAndThrow(res);
+}
+
+// M4 — Pipelines (FR-027, FR-029)
+export async function listPipelines(accessToken: string): Promise<Pipeline[]> {
+  const res = await authorizedFetch('/pipelines', accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function listPipelineStages(accessToken: string, pipelineId: string): Promise<PipelineStage[]> {
+  const res = await authorizedFetch(`/pipelines/${pipelineId}/stages`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createPipelineStage(
+  accessToken: string,
+  pipelineId: string,
+  payload: CreatePipelineStageRequest,
+): Promise<PipelineStage> {
+  const res = await authorizedFetch(`/pipelines/${pipelineId}/stages`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updatePipelineStage(
+  accessToken: string,
+  pipelineId: string,
+  stageId: string,
+  payload: UpdatePipelineStageRequest,
+): Promise<PipelineStage> {
+  const res = await authorizedFetch(`/pipelines/${pipelineId}/stages/${stageId}`, accessToken, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function getPipelineMetrics(accessToken: string, pipelineId: string): Promise<PipelineMetrics> {
+  const res = await authorizedFetch(`/pipelines/${pipelineId}/metrics`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M4 — Deals (FR-023–FR-026, FR-028)
+export async function listDeals(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; pipelineStageId?: string; ownerId?: string } = {},
+): Promise<DealList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.pipelineStageId) query.set('pipelineStageId', params.pipelineStageId);
+  if (params.ownerId) query.set('ownerId', params.ownerId);
+  const res = await authorizedFetch(`/deals?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createDeal(accessToken: string, payload: CreateDealRequest): Promise<Deal> {
+  const res = await authorizedFetch('/deals', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function getDeal(accessToken: string, dealId: string): Promise<Deal> {
+  const res = await authorizedFetch(`/deals/${dealId}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateDeal(accessToken: string, dealId: string, payload: UpdateDealRequest): Promise<Deal> {
+  const res = await authorizedFetch(`/deals/${dealId}`, accessToken, { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function moveDeal(accessToken: string, dealId: string, payload: MoveDealRequest): Promise<Deal> {
+  const res = await authorizedFetch(`/deals/${dealId}/move`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
 }

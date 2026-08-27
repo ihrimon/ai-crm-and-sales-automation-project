@@ -99,10 +99,14 @@ describe('Leads (integration)', () => {
     const lead = await request(server)
       .post('/api/v1/leads')
       .set('Authorization', `Bearer ${owner.accessToken}`)
-      .send({ name: 'Jane Lead', companyId: company.body.id, contactId: contact.body.id })
+      .send({ name: 'Jane Lead', companyId: company.body.id, contactId: contact.body.id, budget: 5000 })
       .expect(201);
     expect(lead.body.companyId).toBe(company.body.id);
     expect(lead.body.contactId).toBe(contact.body.id);
+    // Prisma's Decimal serializes to a string by default (M4 found this the
+    // hard way via Deal.value) — budget must come back as a real number,
+    // matching docs/api/openapi.yaml's `type: number`, not `"5000"`.
+    expect(lead.body.budget).toBe(5000);
 
     const updated = await request(server)
       .patch(`/api/v1/leads/${lead.body.id}`)

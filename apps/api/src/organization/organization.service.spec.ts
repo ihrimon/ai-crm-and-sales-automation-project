@@ -19,6 +19,9 @@ function buildPrismaMock(): any {
       delete: jest.fn(),
     },
     user: { findUnique: jest.fn() },
+    // M4 — create() also seeds a default Pipeline + its stages.
+    pipeline: { create: jest.fn().mockResolvedValue({ id: 'pipeline-1' }) },
+    pipelineStage: { createMany: jest.fn() },
   };
   // `create()` set_config()'s the new org id via $executeRaw before the
   // membership insert (docs/database/README.md §5.6) — not meaningful

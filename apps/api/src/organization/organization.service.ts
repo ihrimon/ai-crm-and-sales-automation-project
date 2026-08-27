@@ -8,6 +8,16 @@ import type { ListMembersQueryDto } from './dto/list-members-query.dto';
 import type { UpdateMemberDto } from './dto/update-member.dto';
 import type { UpdateOrganizationDto } from './dto/update-organization.dto';
 
+const DEFAULT_PIPELINE_STAGES: { name: string; isWon?: boolean; isLost?: boolean }[] = [
+  { name: 'Qualified' },
+  { name: 'Contacted' },
+  { name: 'Meeting' },
+  { name: 'Proposal' },
+  { name: 'Negotiation' },
+  { name: 'Won', isWon: true },
+  { name: 'Lost', isLost: true },
+];
+
 // FR-006–FR-012 (docs/srs/04-functional-requirements.md). Every method here
 // except `create` runs inside a request already wrapped by
 // TenantScopeInterceptor — it reads/writes exclusively through
@@ -44,6 +54,27 @@ export class OrganizationService {
       await tx.organizationMember.create({
         data: { organizationId: organization.id, userId, role: OrgRole.OWNER, isActive: true },
       });
+
+      // M4 — docs/api/openapi.yaml has no POST /pipelines; the contract only
+      // ever lets a caller GET /pipelines or manage an existing one's stages.
+      // The only place a Pipeline can come from is auto-seeding it here, at
+      // org creation, same reasoning as this method already setting up the
+      // OWNER membership. Default stages follow guideline/03-crm-core-and-
+      // pipeline.md §7's suggested flow; every one of them stays fully
+      // reconfigurable afterward via POST/PATCH /pipelines/:id/stages.
+      const pipeline = await tx.pipeline.create({
+        data: { organizationId: organization.id, name: 'Default Pipeline', isDefault: true },
+      });
+      await tx.pipelineStage.createMany({
+        data: DEFAULT_PIPELINE_STAGES.map((stage, index) => ({
+          pipelineId: pipeline.id,
+          name: stage.name,
+          order: index + 1,
+          isWon: stage.isWon ?? false,
+          isLost: stage.isLost ?? false,
+        })),
+      });
+
       return organization;
     });
   }

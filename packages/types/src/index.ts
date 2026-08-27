@@ -162,6 +162,85 @@ export interface CreateCompanyRequest {
 
 export type UpdateCompanyRequest = Partial<CreateCompanyRequest>;
 
+// M4 — Deals + Pipeline (FR-023–FR-029)
+export interface Pipeline {
+  id: string;
+  organizationId: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface PipelineStage {
+  id: string;
+  pipelineId: string;
+  name: string;
+  order: number;
+  isWon: boolean;
+  isLost: boolean;
+}
+
+export interface CreatePipelineStageRequest {
+  name: string;
+  order: number;
+  isWon?: boolean;
+  isLost?: boolean;
+}
+
+export interface UpdatePipelineStageRequest {
+  name?: string;
+  order?: number;
+}
+
+export interface PipelineMetrics {
+  totalValue: number;
+  countByStage: Record<string, number>;
+}
+
+export interface Deal {
+  id: string;
+  organizationId: string;
+  leadId: string | null;
+  contactId: string | null;
+  companyId: string | null;
+  pipelineStageId: string;
+  ownerId: string | null;
+  title: string;
+  value: number | null;
+  currency: string;
+  probability: number | null;
+  expectedCloseDate: string | null;
+  lostReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DealList {
+  data: Deal[];
+  meta: PageMeta;
+}
+
+export interface CreateDealRequest {
+  title: string;
+  value?: number;
+  currency?: string;
+  probability?: number;
+  expectedCloseDate?: string;
+  pipelineStageId: string;
+  leadId?: string;
+  contactId?: string;
+  companyId?: string;
+  ownerId?: string;
+}
+
+export type UpdateDealRequest = Partial<CreateDealRequest> & {
+  lostReason?: string;
+};
+
+export interface MoveDealRequest {
+  pipelineStageId: string;
+  lostReason?: string;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

@@ -1546,11 +1546,24 @@ components:
         ownerId: { type: string, format: uuid }
 
     DealUpdate:
-      allOf:
-        - $ref: "#/components/schemas/DealCreate"
-        - type: object
-          properties:
-            lostReason: { type: string }
+      # Fixed during M4 implementation, same reasoning as LeadUpdate/
+      # ContactUpdate/CompanyUpdate in M3 (docs/development-plan/README.md
+      # §4.1d): `allOf: [DealCreate, {...}]` inherited DealCreate's
+      # `required: [title, pipelineStageId]`, which would force every PATCH
+      # to resend both. Every field here is optional instead.
+      type: object
+      properties:
+        title: { type: string }
+        value: { type: number }
+        currency: { type: string }
+        probability: { type: integer }
+        expectedCloseDate: { type: string, format: date }
+        pipelineStageId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        lostReason: { type: string }
 
     DealList:
       type: object
