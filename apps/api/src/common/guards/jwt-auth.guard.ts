@@ -1,12 +1,18 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import type { OrgRole } from '@prisma/client';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 export interface AuthenticatedUser {
   sub: string;
   email: string;
+  // Present once the user has at least one active OrganizationMember —
+  // resolved fresh at login/refresh time (M2, see AuthService). Absent for a
+  // brand-new registrant who hasn't created/joined an org yet.
+  organizationId?: string;
+  role?: OrgRole;
 }
 
 // architecture/README.md §6.1 — "Auth Guard: who are you?", the first gate

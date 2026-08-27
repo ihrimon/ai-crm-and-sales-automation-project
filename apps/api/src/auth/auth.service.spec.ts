@@ -13,6 +13,11 @@ function buildPrismaMock() {
     refreshToken: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     passwordResetToken: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     emailVerificationToken: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    // M2 — issueTokens() resolves the caller's active org membership (via a
+    // raw call to resolve_active_membership(), see auth.service.ts) to embed
+    // in the JWT; login/refresh tests don't care about org context, so
+    // default to "no organization yet" (matches a fresh registrant).
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
   };
 }

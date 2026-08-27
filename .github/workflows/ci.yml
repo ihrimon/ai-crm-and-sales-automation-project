@@ -29,7 +29,16 @@ jobs:
           --health-retries 5
 
     env:
+      # DATABASE_URL (superuser "crm") is for Prisma Migrate only — it also
+      # creates the "crm_app" role (migration 20260827084203_..., M2). That
+      # migration hardcodes crm_app's password (dev-only credential, same
+      # reasoning as "crm_dev_password" elsewhere), so APP_DATABASE_URL here
+      # must match it exactly — it isn't set by the postgres service's own
+      # env vars the way DATABASE_URL's "crm" password is. The app/tests
+      # connect via APP_DATABASE_URL, never DATABASE_URL — see
+      # apps/api/src/common/prisma/prisma.service.ts for why.
       DATABASE_URL: postgresql://crm:crm_ci_password@localhost:5432/ai_crm?schema=public
+      APP_DATABASE_URL: postgresql://crm_app:crm_app_dev_password@localhost:5432/ai_crm?schema=public
       JWT_SECRET: ci-test-secret
       JWT_ACCESS_TOKEN_TTL: 15m
       JWT_REFRESH_TOKEN_TTL: 30d

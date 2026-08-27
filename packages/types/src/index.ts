@@ -21,6 +21,44 @@ export interface AuthTokens {
   expiresIn: number;
 }
 
+// M2 — Organization + RBAC (FR-006–FR-012)
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: OrgRole;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface PageMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface OrganizationMemberList {
+  data: OrganizationMember[];
+  meta: PageMeta;
+}
+
+export interface CreateOrganizationRequest {
+  name: string;
+  slug: string;
+}
+
+export interface InviteMemberRequest {
+  email: string;
+  role: OrgRole;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

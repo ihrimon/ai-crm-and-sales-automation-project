@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import type { OrgRole } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -181,7 +182,12 @@ export class AuthService {
     const accessTtl = this.configService.get<string>('JWT_ACCESS_TOKEN_TTL') ?? '15m';
     const refreshTtl = this.configService.get<string>('JWT_REFRESH_TOKEN_TTL') ?? '30d';
 
-    const accessToken = await this.jwtService.signAsync({ sub: userId, email });
+    const membership = await this.resolveActiveMembership(userId);
+    const accessToken = await this.jwtService.signAsync({
+      sub: userId,
+      email,
+      ...(membership && { organizationId: membership.organizationId, role: membership.role }),
+    });
 
     const refreshTokenRaw = randomBytes(40).toString('hex');
     await this.prisma.refreshToken.create({
@@ -201,6 +207,32 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  // M2 — resolves which organization a fresh access token should be scoped
+  // to (FR-012, architecture/README.md §6.1's Tenant Scope Interceptor).
+  // A User can belong to more than one Organization (schema.prisma), but
+  // nothing in the current FRs/contract asks for switching the "active" one
+  // mid-session — no such endpoint exists. So this picks the earliest-created
+  // active membership as a stable default ("their original org"); the common
+  // case (one user, one org, from onboarding) has exactly one candidate
+  // anyway. A real multi-org active-org switcher is a follow-up, not built
+  // here — see docs/development-plan/README.md's M2 notes.
+  private async resolveActiveMembership(userId: string): Promise<{ organizationId: string; role: OrgRole } | null> {
+    // Not a plain Prisma query: OrganizationMember has RLS, and this lookup
+    // is inherently cross-organization (there's no "current org" yet — that's
+    // exactly what we're resolving). A real bug caught by
+    // organization.integration.spec.ts: the obvious `findFirst` here silently
+    // returned nothing, every time, because RLS correctly saw no
+    // app.current_organization_id and filtered every row out. Fixed via a
+    // narrow SECURITY DEFINER function — see migration
+    // 20260827085853_resolve_active_membership_fn and
+    // docs/database/README.md §5.6.
+    const rows = await this.prisma.$queryRaw<
+      { organization_id: string; role: OrgRole }[]
+    >`SELECT * FROM resolve_active_membership(${userId})`;
+    const membership = rows[0];
+    return membership ? { organizationId: membership.organization_id, role: membership.role } : null;
   }
 
   private toPublicUser(user: { id: string; email: string; emailVerified: boolean; createdAt: Date }): PublicUser {

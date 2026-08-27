@@ -68,3 +68,66 @@ CREATE POLICY tenant_isolation_automation_execution ON "AutomationExecution"
 -- - Definition of Done reminder (see docs/database/README.md §4): any
 --   migration that adds a new tenant-scoped table must add its RLS policy
 --   in that same migration, not as a follow-up.
+
+-- ---------------------------------------------------------------------------
+-- Added in M2, after a real bug: the app's own connection bypassed RLS
+-- entirely. Full story in docs/database/README.md §5.6.
+-- ---------------------------------------------------------------------------
+--
+-- `crm` (DATABASE_URL, used by Prisma Migrate) is a Postgres superuser —
+-- that's just how the official postgres image's POSTGRES_USER works.
+-- Superusers, and by default a table's OWNER, BYPASS RLS unconditionally.
+-- `apps/api` originally connected as `crm` for everything, meaning every
+-- policy above was silently inert for real application traffic the whole
+-- time. Fix (migration 20260827084203_app_db_role_and_force_rls):
+--
+--   1. A dedicated, non-superuser, NOBYPASSRLS role for the app's actual
+--      runtime connection:
+--
+--      CREATE ROLE crm_app WITH LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS
+--        NOCREATEDB NOCREATEROLE;
+--      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+--        TO crm_app;
+--      ALTER DEFAULT PRIVILEGES FOR ROLE crm IN SCHEMA public
+--        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO crm_app;
+--
+--   2. FORCE ROW LEVEL SECURITY on every tenant-scoped table above — belt
+--      and suspenders in case ownership ever changes (crm_app not being the
+--      owner already closes the gap on its own):
+--
+--      ALTER TABLE "Lead" FORCE ROW LEVEL SECURITY;
+--      -- ...repeated for all 16 tenant-scoped tables.
+--
+-- `apps/api`'s PrismaService now connects via APP_DATABASE_URL (`crm_app`),
+-- never DATABASE_URL (`crm`) — see apps/api/src/common/prisma/prisma.service.ts.
+--
+-- One consequence worth knowing: OrganizationMember's own RLS policy applies
+-- its USING expression as the INSERT's WITH CHECK too (Postgres default when
+-- no separate WITH CHECK is given), so creating a brand-new organization's
+-- first membership row must set_config() the new org's id inside the same
+-- transaction, before that INSERT — there's no "current organization" to
+-- have set beforehand, since the organization didn't exist yet. See
+-- OrganizationService.create() in apps/api/src/organization/organization.service.ts.
+--
+-- A second, separate consequence: AuthService needs to resolve which of a
+-- user's organizations a fresh token should be scoped to — inherently a
+-- cross-organization lookup (search by userId, not yet knowing which org is
+-- "current"). A plain query against RLS-protected OrganizationMember can
+-- never do that (nothing sets app.current_organization_id yet, so RLS
+-- filters out every row). Solved with a narrow SECURITY DEFINER function,
+-- owned by `crm` (whose superuser privileges apply during the function call,
+-- regardless of FORCE — FORCE only affects non-superuser owners), that
+-- accepts only a userId and returns only that user's earliest active
+-- membership — not a general-purpose RLS bypass:
+--
+--   CREATE FUNCTION resolve_active_membership(p_user_id text)
+--     RETURNS TABLE (organization_id text, role "OrgRole")
+--     LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+--       SELECT "organizationId", "role" FROM "OrganizationMember"
+--       WHERE "userId" = p_user_id AND "isActive" = true
+--       ORDER BY "createdAt" ASC LIMIT 1;
+--     $$;
+--   GRANT EXECUTE ON FUNCTION resolve_active_membership(text) TO crm_app;
+--
+-- See migration 20260827085853_resolve_active_membership_fn and
+-- AuthService.resolveActiveMembership().

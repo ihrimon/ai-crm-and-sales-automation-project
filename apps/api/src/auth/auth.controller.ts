@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { SkipTenantScope } from '../common/decorators/skip-tenant-scope.decorator';
 import type { AuthenticatedUser } from '../common/guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
@@ -28,6 +29,9 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  // Acts on the User/RefreshToken tables, not tenant data — and a user
+  // with no organization yet must still be able to log out.
+  @SkipTenantScope()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   logout(@CurrentUser() user: AuthenticatedUser) {
@@ -58,6 +62,7 @@ export class AuthController {
     return this.authService.confirmPasswordReset(dto);
   }
 
+  @SkipTenantScope()
   @Post('email/verify')
   @HttpCode(HttpStatus.NO_CONTENT)
   verifyEmail(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyEmailDto) {
