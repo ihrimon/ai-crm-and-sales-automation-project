@@ -31,13 +31,13 @@ docker compose up -d          # PostgreSQL + Redis (non-default host ports — s
 pnpm install
 pnpm db:migrate                # apply apps/api/prisma/schema.prisma + RLS policies
 pnpm dev:api                   # http://localhost:34001
-pnpm dev:web                   # http://localhost:3000
+pnpm dev:web                   # http://localhost:3000 (or the next free port — see the port note below)
 ```
 
 Health check once the API is running: `curl http://localhost:34001/health`.
 
-> **Port note:** this machine may already have other projects' Postgres/Redis/API bound to the "usual" ports (5432, 6379, 3001). `docker-compose.yml` and `.env.example` use non-default host ports (55432, 56379, 34001) to avoid colliding with them — container-internal ports are standard. If you're on a clean machine, feel free to switch them back.
+> **Port note:** this machine may already have other projects' Postgres/Redis/API bound to the "usual" ports (5432, 6379, 3001), and possibly a Next.js dev server on 3000 too. `docker-compose.yml` and `.env.example` use non-default host ports (55432, 56379, 34001) to avoid colliding with them — container-internal ports are standard. `apps/web`'s dev server has no such override, so if 3000 is taken, `next dev` just shifts to 3001 (check its terminal output for the actual port). If you're on a clean machine, feel free to switch the API-side ports back.
 
 ## Where This Is At
 
-This repository is at Milestone **M0 (Project Setup)** of [docs/development-plan/](docs/development-plan/README.md) — the workspace, database schema, and CI skeleton exist; no feature modules (Auth, Leads, Deals, ...) are implemented yet. See [docs/tracker.md](docs/tracker.md) for the up-to-date status.
+This repository has completed Milestones **M0 (Project Setup)** and **M1 (Database + Auth)** of [docs/development-plan/](docs/development-plan/README.md) — the workspace, database schema, CI skeleton, and a working `Auth` module (register/login/logout/refresh/password-reset/email-verify with JWT + refresh-token rotation) all exist, with real `/login`/`/register` screens. Feature modules beyond Auth (Organization, Leads, Deals, ...) aren't implemented yet. See [docs/tracker.md](docs/tracker.md) for the up-to-date status.

@@ -7,6 +7,7 @@
   "scripts": {
     "lint": "echo \"@ai-crm/types: nothing to lint yet\"",
     "typecheck": "echo \"@ai-crm/types: nothing to typecheck yet\"",
+    "test": "echo \"@ai-crm/types: nothing to test yet\"",
     "build": "echo \"@ai-crm/types: no build step — consumed as TS source\""
   }
 }

@@ -1,5 +1,6 @@
-# CI skeleton — Milestone M0 (docs/development-plan/README.md).
-# Lint + type-check + build on every PR, per docs/guideline/16-operations-and-compliance.md.
+# CI — Milestone M0 laid down lint+typecheck+build; Milestone M1 (Auth) added
+# the `test` step plus the Postgres service it needs for the register→login
+# integration test (docs/development-plan/README.md#m1--database--auth--size-m).
 
 name: CI
 
@@ -11,6 +12,28 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm_ci_password
+          POSTGRES_DB: ai_crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://crm:crm_ci_password@localhost:5432/ai_crm?schema=public
+      JWT_SECRET: ci-test-secret
+      JWT_ACCESS_TOKEN_TTL: 15m
+      JWT_REFRESH_TOKEN_TTL: 30d
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,5 +51,9 @@ jobs:
       - run: pnpm lint
 
       - run: pnpm typecheck
+
+      - run: pnpm --filter @ai-crm/api prisma:deploy
+
+      - run: pnpm test
 
       - run: pnpm build

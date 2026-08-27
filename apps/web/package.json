@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"@ai-crm/web: no tests yet\""
   },
   "dependencies": {
+    "@ai-crm/types": "workspace:*",
     "next": "^14.2.18",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

@@ -98,7 +98,15 @@ paths:
     post:
       tags: [Auth]
       operationId: refreshToken
-      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      # Fixed during M1 implementation: README §2 already documented this as
+      # "any authenticated (refresh token)" — i.e. authenticated BY the
+      # refresh token itself, not by a still-valid Bearer access token (which
+      # would be expired in the exact case a client calls this). The original
+      # draft inherited the global bearerAuth requirement by omission; that
+      # was a contract bug, not a real requirement, so `security: []` +
+      # `x-roles: []` match the README's intent instead of the literal draft.
+      security: []
+      x-roles: []
       requestBody:
         required: true
         content:

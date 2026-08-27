@@ -47,8 +47,60 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  memberships OrganizationMember[]
-  auditLogs   AuditLog[] @relation("AuditActor")
+  memberships              OrganizationMember[]
+  auditLogs                AuditLog[]               @relation("AuditActor")
+  refreshTokens            RefreshToken[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+}
+
+// Not tenant-scoped (belongs to User, not Organization) — no RLS policy needed.
+// Added in Milestone M1 (docs/development-plan/README.md) to support
+// refresh-token rotation (FR-002); this Phase 07 pass didn't model it
+// originally because "JWT + refresh rotation" was named as an M1
+// implementation task, not a separate FR. tokenHash stores a hash of the
+// opaque token, never the raw value (same NFR-005 principle as passwordHash).
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Added in Milestone M1 to back FR-004 (secure password recovery). Single-use:
+// consumed via usedAt, not deleted, so a re-submitted link fails loudly
+// instead of silently succeeding twice.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Added in Milestone M1 to back FR-005 (email verification).
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum OrgRole {
