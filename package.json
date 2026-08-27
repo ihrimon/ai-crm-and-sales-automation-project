@@ -1,0 +1,19 @@
+{
+  "name": "ai-crm-sales-automation",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-native, automation-first CRM & Sales Automation platform. See docs/README.md for the full SDLC documentation.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @ai-crm/api dev",
+    "dev:web": "pnpm --filter @ai-crm/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @ai-crm/api prisma:generate",
+    "db:migrate": "pnpm --filter @ai-crm/api prisma:migrate"
+  }
+}

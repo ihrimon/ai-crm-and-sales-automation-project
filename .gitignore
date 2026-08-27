@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Prisma
+apps/api/prisma/migrations/**/migration.sql.bak
+
+# Test / coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Markdown — only the root README.md is pushed to GitHub.
+# Everything else (docs/**, including every nested README.md under
+# docs/guideline, docs/srs, docs/architecture, docs/database, docs/api,
+# docs/ui-ux, docs/development-plan, docs/decisions, docs/bn, ...) stays
+# local-only. `*.md` matches by filename at any depth; the `!/README.md`
+# negation re-includes only the one at the repo root.
+*.md
+!/README.md

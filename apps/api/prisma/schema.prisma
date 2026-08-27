@@ -1,0 +1,512 @@
+// Database Design — AI CRM & Sales Automation
+// Source of design record: docs/database/README.md (ERD, rationale, FR traceability).
+// This file is the real, in-repo copy referenced there — the design doc's copy
+// stays as the record of what was decided and why; this one is what Prisma runs against.
+// Every tenant-scoped model below has a matching RLS policy — see the
+// 2_rls_policies migration in prisma/migrations/ (ADR-004).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & Tenancy
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members              OrganizationMember[]
+  leadRotationState    LeadRotationState?
+  leads                Lead[]
+  contacts             Contact[]
+  companies            Company[]
+  deals                Deal[]
+  pipelines            Pipeline[]
+  activities           Activity[]
+  tasks                Task[]
+  aiAnalyses           AIAnalysis[]
+  emailDrafts          EmailDraft[]
+  automations          Automation[]
+  automationExecutions AutomationExecution[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships OrganizationMember[]
+  auditLogs   AuditLog[] @relation("AuditActor")
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  SALES_MANAGER
+  SALES_REP
+  VIEWER
+}
+
+// FR-007, FR-008, FR-010-FR-012. See docs/database/README.md §5.1 for why this
+// is an enum, not a separate Role table — no requirement yet for
+// organization-defined custom roles.
+model OrganizationMember {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgRole
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ownedLeads             Lead[]                @relation("LeadOwner")
+  ownedDeals             Deal[]                @relation("DealOwner")
+  assignedTasks          Task[]                @relation("TaskAssignee")
+  createdActivities      Activity[]            @relation("ActivityCreatedBy")
+  createdEmailDrafts     EmailDraft[]          @relation("EmailDraftCreatedBy")
+  createdAutomations     Automation[]          @relation("AutomationCreatedBy")
+  reviewedExecutions     AutomationExecution[] @relation("ExecutionReviewedBy")
+  notifications          Notification[]
+  lastAssignedRotations  LeadRotationState[]   @relation("RotationLastAssigned")
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+}
+
+// FR-050 (from competitor research) — one row per organization, tracks the
+// round-robin cursor. See docs/database/README.md §5.3 for why this isn't
+// just a field on Organization.
+model LeadRotationState {
+  organizationId       String   @id
+  lastAssignedMemberId String?
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastAssignedMember OrganizationMember? @relation("RotationLastAssigned", fields: [lastAssignedMemberId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// CRM Core — FR-013 to FR-029
+// ---------------------------------------------------------------------------
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
+  LOST
+}
+
+model Lead {
+  id               String     @id @default(uuid())
+  organizationId   String
+  name             String
+  email            String?
+  phone            String?
+  source           String?
+  status           LeadStatus @default(NEW)
+  industry         String?
+  jobTitle         String?
+  budget           Decimal?   @db.Decimal(14, 2)
+  score            Int?
+  lostReason       String?
+  lastContactedAt  DateTime?
+  nextFollowUpDate DateTime?
+  ownerId          String?
+  contactId        String?
+  companyId        String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        OrganizationMember? @relation("LeadOwner", fields: [ownerId], references: [id])
+  contact      Contact?            @relation(fields: [contactId], references: [id])
+  company      Company?            @relation(fields: [companyId], references: [id])
+
+  deals      Deal[]
+  activities Activity[]
+  tasks      Task[]
+  aiAnalyses AIAnalysis[]
+  emailDrafts EmailDraft[]
+  executions AutomationExecution[]
+
+  @@index([organizationId])
+  @@index([organizationId, ownerId])
+  @@index([organizationId, status])
+}
+
+model Contact {
+  id               String   @id @default(uuid())
+  organizationId   String
+  companyId        String?
+  name             String
+  email            String?
+  phone            String?
+  position         String?
+  preferredChannel String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id])
+
+  leads       Lead[]
+  deals       Deal[]
+  activities  Activity[]
+  tasks       Task[]
+  emailDrafts EmailDraft[]
+
+  @@index([organizationId])
+  @@index([organizationId, companyId])
+}
+
+model Company {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  website        String?
+  industry       String?
+  companySize    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  contacts   Contact[]
+  leads      Lead[]
+  deals      Deal[]
+  activities Activity[]
+  tasks      Task[]
+
+  @@index([organizationId])
+}
+
+// FR-027-FR-029, plus the note that stages are per-organization and reorderable.
+model Pipeline {
+  id             String  @id @default(uuid())
+  organizationId String
+  name           String
+  isDefault      Boolean @default(true)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages       PipelineStage[]
+
+  @@index([organizationId])
+}
+
+model PipelineStage {
+  id         String  @id @default(uuid())
+  pipelineId String
+  name       String
+  order      Int
+  isWon      Boolean @default(false)
+  isLost     Boolean @default(false)
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals    Deal[]
+
+  @@index([pipelineId])
+}
+
+model Deal {
+  id                String    @id @default(uuid())
+  organizationId    String
+  leadId            String?
+  contactId         String?
+  companyId         String?
+  pipelineStageId   String
+  ownerId           String?
+  title             String
+  value             Decimal?  @db.Decimal(14, 2)
+  currency          String    @default("USD")
+  probability       Int?
+  expectedCloseDate DateTime?
+  lostReason        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead          Lead?               @relation(fields: [leadId], references: [id])
+  contact       Contact?            @relation(fields: [contactId], references: [id])
+  company       Company?            @relation(fields: [companyId], references: [id])
+  pipelineStage PipelineStage       @relation(fields: [pipelineStageId], references: [id])
+  owner         OrganizationMember? @relation("DealOwner", fields: [ownerId], references: [id])
+
+  activities Activity[]
+  tasks      Task[]
+  executions AutomationExecution[]
+
+  @@index([organizationId])
+  @@index([organizationId, pipelineStageId])
+  @@index([organizationId, ownerId])
+}
+
+// ---------------------------------------------------------------------------
+// Activities & Tasks — FR-030 to FR-032
+// See docs/database/README.md §5.2 for why these are nullable per-type FKs,
+// not a polymorphic (entityType, entityId) pair.
+// ---------------------------------------------------------------------------
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  STAGE_CHANGE
+  OTHER
+}
+
+model Activity {
+  id             String       @id @default(uuid())
+  organizationId String
+  leadId         String?
+  contactId      String?
+  companyId      String?
+  dealId         String?
+  createdById    String?
+  type           ActivityType
+  notes          String?
+  occurredAt     DateTime     @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?               @relation(fields: [leadId], references: [id])
+  contact      Contact?            @relation(fields: [contactId], references: [id])
+  company      Company?            @relation(fields: [companyId], references: [id])
+  deal         Deal?               @relation(fields: [dealId], references: [id])
+  createdBy    OrganizationMember? @relation("ActivityCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, leadId])
+  @@index([organizationId, dealId])
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+model Task {
+  id             String     @id @default(uuid())
+  organizationId String
+  leadId         String?
+  contactId      String?
+  companyId      String?
+  dealId         String?
+  assignedToId   String?
+  title          String
+  status         TaskStatus @default(OPEN)
+  dueDate        DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?               @relation(fields: [leadId], references: [id])
+  contact      Contact?            @relation(fields: [contactId], references: [id])
+  company      Company?            @relation(fields: [companyId], references: [id])
+  deal         Deal?               @relation(fields: [dealId], references: [id])
+  assignedTo   OrganizationMember? @relation("TaskAssignee", fields: [assignedToId], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, assignedToId])
+  @@index([organizationId, status])
+}
+
+// ---------------------------------------------------------------------------
+// AI — FR-036 to FR-041, FR-051
+// ---------------------------------------------------------------------------
+
+enum AIAnalysisType {
+  SCORE
+  QUALIFICATION
+  SUMMARY
+}
+
+model AIAnalysis {
+  id                String         @id @default(uuid())
+  organizationId    String
+  leadId            String
+  type              AIAnalysisType
+  score             Int?
+  classification    String?
+  reasons           Json?
+  recommendedAction String?        // FR-051
+  rawOutput         Json?
+  createdAt         DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, leadId])
+}
+
+enum EmailDraftStatus {
+  DRAFT
+  DISCARDED
+  SENT_MANUALLY
+}
+
+// FR-039 — the system never sends this automatically; status only ever
+// moves to SENT_MANUALLY after an explicit user action.
+model EmailDraft {
+  id             String           @id @default(uuid())
+  organizationId String
+  leadId         String?
+  contactId      String?
+  createdById    String?
+  subject        String
+  body           String
+  tone           String?
+  status         EmailDraftStatus @default(DRAFT)
+  createdAt      DateTime         @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?               @relation(fields: [leadId], references: [id])
+  contact      Contact?            @relation(fields: [contactId], references: [id])
+  createdBy    OrganizationMember? @relation("EmailDraftCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, leadId])
+}
+
+// ---------------------------------------------------------------------------
+// Automation — FR-042 to FR-045, FR-050, FR-052
+// ---------------------------------------------------------------------------
+
+enum AutomationTriggerType {
+  LEAD_CREATED
+  DEAL_STAGE_CHANGED
+  NO_RESPONSE
+  DEAL_WON
+}
+
+enum AutomationActionType {
+  ASSIGN_LEAD_ROUND_ROBIN
+  SEND_EMAIL
+  CREATE_TASK
+  NOTIFY
+  CALL_AI
+  WEBHOOK
+}
+
+model Automation {
+  id             String                @id @default(uuid())
+  organizationId String
+  name           String
+  triggerType    AutomationTriggerType
+  conditionJson  Json?
+  actionType     AutomationActionType
+  isActive       Boolean               @default(true)
+  createdById    String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    OrganizationMember?   @relation("AutomationCreatedBy", fields: [createdById], references: [id])
+  executions   AutomationExecution[]
+
+  @@index([organizationId])
+}
+
+enum AutomationTriggeredByType {
+  RULE
+  AI
+}
+
+// FR-052 — status carries the human-approval workflow directly.
+// See docs/database/README.md §5.4: intentionally not a separate
+// "ApprovalQueue" entity.
+enum AutomationExecutionStatus {
+  EXECUTED
+  PENDING_APPROVAL
+  APPROVED
+  DISMISSED
+  FAILED
+}
+
+model AutomationExecution {
+  id              String                    @id @default(uuid())
+  organizationId  String
+  automationId    String
+  leadId          String?
+  dealId          String?
+  triggeredByType AutomationTriggeredByType
+  status          AutomationExecutionStatus @default(EXECUTED)
+  resultJson      Json?
+  error           String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  executedAt      DateTime                  @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  automation   Automation          @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  lead         Lead?               @relation(fields: [leadId], references: [id])
+  deal         Deal?               @relation(fields: [dealId], references: [id])
+  reviewedBy   OrganizationMember? @relation("ExecutionReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications & Audit — FR-046 to FR-049
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id                String   @id @default(uuid())
+  organizationId    String
+  recipientMemberId String
+  type              String
+  payload           Json?
+  isRead            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipient    OrganizationMember @relation(fields: [recipientMemberId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, recipientMemberId, isRead])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  organizationId String
+  actorUserId    String?
+  entityType     String
+  entityId       String
+  action         AuditAction
+  oldValue       Json?
+  newValue       Json?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, entityType, entityId])
+}

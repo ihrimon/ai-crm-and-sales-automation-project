@@ -1,0 +1,12 @@
+{
+  "name": "@ai-crm/types",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "lint": "echo \"@ai-crm/types: nothing to lint yet\"",
+    "typecheck": "echo \"@ai-crm/types: nothing to typecheck yet\"",
+    "build": "echo \"@ai-crm/types: no build step — consumed as TS source\""
+  }
+}

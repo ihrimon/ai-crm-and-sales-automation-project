@@ -1,0 +1,1702 @@
+# API Design — AI CRM & Sales Automation
+# Phase 08 draft. See docs/api/README.md for conventions, FR traceability, and the roles model.
+# Response schemas mirror docs/database/schema.prisma field-for-field.
+
+openapi: 3.0.3
+
+info:
+  title: AI CRM & Sales Automation API
+  version: "1.0.0-draft"
+  description: >
+    Draft contract for Phase 08. Every operation carries an `x-roles` extension
+    (see README §2) documenting which OrgRole values may call it — enforcement
+    happens in the Rbac Guard (architecture/README.md §6.1), not here.
+
+servers:
+  - url: /api/v1
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Organizations
+  - name: Leads
+  - name: AI
+  - name: Contacts
+  - name: Companies
+  - name: Deals
+  - name: Pipelines
+  - name: Activities
+  - name: Tasks
+  - name: Dashboard
+  - name: Automations
+  - name: Notifications
+  - name: Audit
+
+paths:
+  # ---------------------------------------------------------------------
+  # Auth — FR-001 to FR-005
+  # ---------------------------------------------------------------------
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      security: []
+      x-roles: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      security: []
+      x-roles: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutUser
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "204": { description: Logged out }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/password-reset/request:
+    post:
+      tags: [Auth]
+      operationId: requestPasswordReset
+      security: []
+      x-roles: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "202": { description: Reset email sent if the account exists }
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      operationId: confirmPasswordReset
+      security: []
+      x-roles: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, format: password, minLength: 8 }
+      responses:
+        "204": { description: Password updated }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/email/verify:
+    post:
+      tags: [Auth]
+      operationId: verifyEmail
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "204": { description: Email verified }
+
+  # ---------------------------------------------------------------------
+  # Organizations & Members — FR-006 to FR-012
+  # ---------------------------------------------------------------------
+  /organizations:
+    post:
+      tags: [Organizations]
+      operationId: createOrganization
+      x-roles: []  # any authenticated user; caller becomes OWNER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+
+  /organizations/{organizationId}:
+    parameters:
+      - $ref: "#/components/parameters/organizationId"
+    get:
+      tags: [Organizations]
+      operationId: getOrganization
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Organizations]
+      operationId: updateOrganization
+      x-roles: [OWNER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+
+  /organizations/{organizationId}/members:
+    parameters:
+      - $ref: "#/components/parameters/organizationId"
+    get:
+      tags: [Organizations]
+      operationId: listOrganizationMembers
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizationMemberList" }
+    post:
+      tags: [Organizations]
+      operationId: inviteOrganizationMember
+      x-roles: [OWNER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: "#/components/schemas/OrgRole" }
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizationMember" }
+
+  /organizations/{organizationId}/members/{memberId}:
+    parameters:
+      - $ref: "#/components/parameters/organizationId"
+      - name: memberId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Organizations]
+      operationId: updateOrganizationMember
+      x-roles: [OWNER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { $ref: "#/components/schemas/OrgRole" }
+                isActive: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizationMember" }
+    delete:
+      tags: [Organizations]
+      operationId: removeOrganizationMember
+      x-roles: [OWNER, ADMIN]
+      responses:
+        "204": { description: Removed }
+
+  # ---------------------------------------------------------------------
+  # Leads — FR-013 to FR-018, FR-050 🔎
+  # ---------------------------------------------------------------------
+  /leads:
+    get:
+      tags: [Leads]
+      operationId: listLeads
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      description: SALES_REP sees only leads where ownerId is their own membership.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/LeadStatus" }
+        - name: ownerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema: { type: string, example: "-createdAt" }
+      responses:
+        "200":
+          description: Leads
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeadList" }
+    post:
+      tags: [Leads]
+      operationId: createLead
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeadCreate" }
+      responses:
+        "201":
+          description: >
+            Lead created. If ownerId is omitted, the round-robin Automation
+            (FR-050) assigns it asynchronously.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+
+  /leads/{leadId}:
+    parameters:
+      - $ref: "#/components/parameters/leadId"
+    get:
+      tags: [Leads]
+      operationId: getLead
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Lead
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Leads]
+      operationId: updateLead
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeadUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+    delete:
+      tags: [Leads]
+      operationId: deleteLead
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      responses:
+        "204": { description: Deleted }
+
+  /leads/{leadId}/assign:
+    parameters:
+      - $ref: "#/components/parameters/leadId"
+    post:
+      tags: [Leads]
+      operationId: assignLead
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerId]
+              properties:
+                ownerId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Assigned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+
+  /leads/{leadId}/ai-analyses:
+    parameters:
+      - $ref: "#/components/parameters/leadId"
+    post:
+      tags: [AI]
+      operationId: requestLeadAIAnalysis
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: >
+        Async — enqueues the job and returns immediately (architecture/README.md §6.2).
+        Poll GET .../ai-analyses/{analysisId} or wait for a Notification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { $ref: "#/components/schemas/AIAnalysisType" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analysisId: { type: string, format: uuid }
+
+  /leads/{leadId}/ai-analyses/{analysisId}:
+    parameters:
+      - $ref: "#/components/parameters/leadId"
+      - name: analysisId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [AI]
+      operationId: getLeadAIAnalysis
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      responses:
+        "200":
+          description: >
+            Analysis result. `recommendedAction` (FR-051 🔎) is populated once the
+            worker's response passes shape validation (ADR-007).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AIAnalysis" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /leads/{leadId}/email-drafts:
+    parameters:
+      - $ref: "#/components/parameters/leadId"
+    post:
+      tags: [AI]
+      operationId: createLeadEmailDraft
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tone: { type: string }
+      responses:
+        "202":
+          description: Draft generation accepted (async, same pattern as ai-analyses)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  emailDraftId: { type: string, format: uuid }
+
+  /email-drafts/{emailDraftId}:
+    parameters:
+      - name: emailDraftId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [AI]
+      operationId: updateEmailDraft
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: >
+        The system never sends this automatically (FR-039). Setting status to
+        SENT_MANUALLY records that a human sent it outside the system.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject: { type: string }
+                body: { type: string }
+                status: { $ref: "#/components/schemas/EmailDraftStatus" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailDraft" }
+
+  # ---------------------------------------------------------------------
+  # Contacts — FR-019 to FR-020
+  # ---------------------------------------------------------------------
+  /contacts:
+    get:
+      tags: [Contacts]
+      operationId: listContacts
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: companyId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Contacts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContactList" }
+    post:
+      tags: [Contacts]
+      operationId: createContact
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContactCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Contact" }
+
+  /contacts/{contactId}:
+    parameters:
+      - name: contactId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Contacts]
+      operationId: getContact
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Contact
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Contact" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Contacts]
+      operationId: updateContact
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContactCreate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Contact" }
+    delete:
+      tags: [Contacts]
+      operationId: deleteContact
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      responses:
+        "204": { description: Deleted }
+
+  # ---------------------------------------------------------------------
+  # Companies — FR-021 to FR-022
+  # ---------------------------------------------------------------------
+  /companies:
+    get:
+      tags: [Companies]
+      operationId: listCompanies
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Companies
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompanyList" }
+    post:
+      tags: [Companies]
+      operationId: createCompany
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompanyCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Company" }
+
+  /companies/{companyId}:
+    parameters:
+      - name: companyId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Companies]
+      operationId: getCompany
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Company
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Company" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Companies]
+      operationId: updateCompany
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompanyCreate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Company" }
+    delete:
+      tags: [Companies]
+      operationId: deleteCompany
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      responses:
+        "204": { description: Deleted }
+
+  # ---------------------------------------------------------------------
+  # Deals & Pipelines — FR-023 to FR-029
+  # ---------------------------------------------------------------------
+  /deals:
+    get:
+      tags: [Deals]
+      operationId: listDeals
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      description: SALES_REP sees only deals where ownerId is their own membership.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: pipelineStageId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: ownerId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deals
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DealList" }
+    post:
+      tags: [Deals]
+      operationId: createDeal
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DealCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deal" }
+
+  /deals/{dealId}:
+    parameters:
+      - $ref: "#/components/parameters/dealId"
+    get:
+      tags: [Deals]
+      operationId: getDeal
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Deal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deal" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Deals]
+      operationId: updateDeal
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DealUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deal" }
+
+  /deals/{dealId}/move:
+    parameters:
+      - $ref: "#/components/parameters/dealId"
+    post:
+      tags: [Deals]
+      operationId: moveDeal
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: Moving to a Won/Lost stage evaluates DEAL_STAGE_CHANGED Automations (FR-028).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pipelineStageId]
+              properties:
+                pipelineStageId: { type: string, format: uuid }
+                lostReason: { type: string }
+      responses:
+        "200":
+          description: Moved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deal" }
+
+  /pipelines:
+    get:
+      tags: [Pipelines]
+      operationId: listPipelines
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Pipelines
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Pipeline" }
+
+  /pipelines/{pipelineId}/stages:
+    parameters:
+      - name: pipelineId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Pipelines]
+      operationId: listPipelineStages
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Stages
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PipelineStage" }
+    post:
+      tags: [Pipelines]
+      operationId: createPipelineStage
+      x-roles: [OWNER, ADMIN]
+      description: 🔎 Custom, reorderable stages per organization (guideline/03-crm-core-and-pipeline.md).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, order]
+              properties:
+                name: { type: string }
+                order: { type: integer }
+                isWon: { type: boolean }
+                isLost: { type: boolean }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineStage" }
+
+  /pipelines/{pipelineId}/stages/{stageId}:
+    parameters:
+      - name: pipelineId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: stageId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Pipelines]
+      operationId: updatePipelineStage
+      x-roles: [OWNER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                order: { type: integer }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineStage" }
+
+  /pipelines/{pipelineId}/metrics:
+    parameters:
+      - name: pipelineId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Pipelines]
+      operationId: getPipelineMetrics
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Basic pipeline metrics (FR-029)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalValue: { type: number }
+                  countByStage:
+                    type: object
+                    additionalProperties: { type: integer }
+
+  # ---------------------------------------------------------------------
+  # Activities & Tasks — FR-030 to FR-032
+  # ---------------------------------------------------------------------
+  /activities:
+    get:
+      tags: [Activities]
+      operationId: listActivities
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: leadId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: dealId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: contactId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: companyId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Activities
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActivityList" }
+    post:
+      tags: [Activities]
+      operationId: createActivity
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: Exactly one of leadId/contactId/companyId/dealId must be set (database/README.md §5.2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivityCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      operationId: listTasks
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: assignedToId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/TaskStatus" }
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskList" }
+    post:
+      tags: [Tasks]
+      operationId: createTask
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+
+  /tasks/{taskId}:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Tasks]
+      operationId: updateTask
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: Callable by the assignee, or OWNER/ADMIN/SALES_MANAGER regardless of assignment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: "#/components/schemas/TaskStatus" }
+                dueDate: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+
+  # ---------------------------------------------------------------------
+  # Dashboard — FR-033 to FR-035
+  # ---------------------------------------------------------------------
+  /dashboard/metrics:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardMetrics
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Lead, deal, and pipeline metrics scoped to the caller's organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalLeads: { type: integer }
+                  qualifiedLeads: { type: integer }
+                  openDeals: { type: integer }
+                  wonDeals: { type: integer }
+                  lostDeals: { type: integer }
+                  pipelineValue: { type: number }
+                  conversionRate: { type: number }
+
+  # ---------------------------------------------------------------------
+  # Automations — FR-042 to FR-045, FR-052 🔎
+  # ---------------------------------------------------------------------
+  /automations:
+    get:
+      tags: [Automations]
+      operationId: listAutomations
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Automations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Automation" }
+    post:
+      tags: [Automations]
+      operationId: createAutomation
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+
+  /automations/{automationId}:
+    parameters:
+      - name: automationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Automations]
+      operationId: updateAutomation
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationCreate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+    delete:
+      tags: [Automations]
+      operationId: deleteAutomation
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      responses:
+        "204": { description: Deleted }
+
+  /automation-executions:
+    get:
+      tags: [Automations]
+      operationId: listAutomationExecutions
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: SALES_REP sees only executions on Leads/Deals they own.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/AutomationExecutionStatus" }
+      responses:
+        "200":
+          description: Executions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationExecutionList" }
+
+  /automation-executions/{executionId}/approve:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Automations]
+      operationId: approveAutomationExecution
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: FR-052 🔎 — only valid on executions with status=PENDING_APPROVAL.
+      responses:
+        "200":
+          description: status set to EXECUTED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationExecution" }
+
+  /automation-executions/{executionId}/reject:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Automations]
+      operationId: rejectAutomationExecution
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      responses:
+        "200":
+          description: status set to DISMISSED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationExecution" }
+
+  # ---------------------------------------------------------------------
+  # Notifications — FR-046 to FR-047
+  # ---------------------------------------------------------------------
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      description: Always scoped to the caller's own OrganizationMember — never another member's.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: isRead
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationList" }
+
+  /notifications/{notificationId}/read:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+
+  # ---------------------------------------------------------------------
+  # Audit — FR-048
+  # ---------------------------------------------------------------------
+  /audit-logs:
+    get:
+      tags: [Audit]
+      operationId: listAuditLogs
+      x-roles: [OWNER, ADMIN, VIEWER]
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: entityType
+          in: query
+          schema: { type: string }
+        - name: entityId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditLogList" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    pageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    organizationId:
+      name: organizationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    leadId:
+      name: leadId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    dealId:
+      name: dealId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but not permitted (role or row-level scope)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found, or not visible to the caller's tenant/role scope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        emailVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    OrgRole:
+      type: string
+      enum: [OWNER, ADMIN, SALES_MANAGER, SALES_REP, VIEWER]
+
+    Organization:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    OrganizationMember:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/OrgRole" }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    OrganizationMemberList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/OrganizationMember" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+
+    LeadStatus:
+      type: string
+      enum: [NEW, CONTACTED, QUALIFIED, UNQUALIFIED, CONVERTED, LOST]
+
+    Lead:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/LeadStatus" }
+        industry: { type: string, nullable: true }
+        jobTitle: { type: string, nullable: true }
+        budget: { type: number, nullable: true }
+        score: { type: integer, nullable: true }
+        lostReason: { type: string, nullable: true }
+        lastContactedAt: { type: string, format: date-time, nullable: true }
+        nextFollowUpDate: { type: string, format: date-time, nullable: true }
+        ownerId: { type: string, format: uuid, nullable: true }
+        contactId: { type: string, format: uuid, nullable: true }
+        companyId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    LeadCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { type: string }
+        industry: { type: string }
+        jobTitle: { type: string }
+        budget: { type: number }
+        ownerId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+
+    LeadUpdate:
+      allOf:
+        - $ref: "#/components/schemas/LeadCreate"
+        - type: object
+          properties:
+            status: { $ref: "#/components/schemas/LeadStatus" }
+            lostReason: { type: string }
+            nextFollowUpDate: { type: string, format: date-time }
+
+    LeadList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Lead" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    AIAnalysisType:
+      type: string
+      enum: [SCORE, QUALIFICATION, SUMMARY]
+
+    AIAnalysis:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/AIAnalysisType" }
+        score: { type: integer, nullable: true }
+        classification: { type: string, nullable: true }
+        reasons:
+          type: array
+          items: { type: string }
+          nullable: true
+        recommendedAction: { type: string, nullable: true, description: "FR-051 🔎" }
+        createdAt: { type: string, format: date-time }
+
+    EmailDraftStatus:
+      type: string
+      enum: [DRAFT, DISCARDED, SENT_MANUALLY]
+
+    EmailDraft:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid, nullable: true }
+        contactId: { type: string, format: uuid, nullable: true }
+        subject: { type: string }
+        body: { type: string }
+        tone: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/EmailDraftStatus" }
+        createdAt: { type: string, format: date-time }
+
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        position: { type: string, nullable: true }
+        preferredChannel: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ContactCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        position: { type: string }
+        preferredChannel: { type: string }
+        companyId: { type: string, format: uuid }
+
+    ContactList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Contact" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    Company:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+        website: { type: string, nullable: true }
+        industry: { type: string, nullable: true }
+        companySize: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CompanyCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        website: { type: string }
+        industry: { type: string }
+        companySize: { type: string }
+
+    CompanyList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Company" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    Pipeline:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+        isDefault: { type: boolean }
+
+    PipelineStage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        pipelineId: { type: string, format: uuid }
+        name: { type: string }
+        order: { type: integer }
+        isWon: { type: boolean }
+        isLost: { type: boolean }
+
+    Deal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid, nullable: true }
+        contactId: { type: string, format: uuid, nullable: true }
+        companyId: { type: string, format: uuid, nullable: true }
+        pipelineStageId: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        value: { type: number, nullable: true }
+        currency: { type: string, default: USD }
+        probability: { type: integer, nullable: true }
+        expectedCloseDate: { type: string, format: date, nullable: true }
+        lostReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    DealCreate:
+      type: object
+      required: [title, pipelineStageId]
+      properties:
+        title: { type: string }
+        value: { type: number }
+        currency: { type: string }
+        probability: { type: integer }
+        expectedCloseDate: { type: string, format: date }
+        pipelineStageId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+
+    DealUpdate:
+      allOf:
+        - $ref: "#/components/schemas/DealCreate"
+        - type: object
+          properties:
+            lostReason: { type: string }
+
+    DealList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Deal" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    ActivityType:
+      type: string
+      enum: [CALL, EMAIL, MEETING, NOTE, STAGE_CHANGE, OTHER]
+
+    Activity:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid, nullable: true }
+        contactId: { type: string, format: uuid, nullable: true }
+        companyId: { type: string, format: uuid, nullable: true }
+        dealId: { type: string, format: uuid, nullable: true }
+        createdById: { type: string, format: uuid, nullable: true }
+        type: { $ref: "#/components/schemas/ActivityType" }
+        notes: { type: string, nullable: true }
+        occurredAt: { type: string, format: date-time }
+
+    ActivityCreate:
+      type: object
+      required: [type]
+      properties:
+        type: { $ref: "#/components/schemas/ActivityType" }
+        notes: { type: string }
+        leadId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        dealId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+
+    ActivityList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Activity" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    TaskStatus:
+      type: string
+      enum: [OPEN, IN_PROGRESS, DONE, CANCELLED]
+
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid, nullable: true }
+        contactId: { type: string, format: uuid, nullable: true }
+        companyId: { type: string, format: uuid, nullable: true }
+        dealId: { type: string, format: uuid, nullable: true }
+        assignedToId: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        dueDate: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TaskCreate:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        dueDate: { type: string, format: date-time }
+        assignedToId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        dealId: { type: string, format: uuid }
+
+    TaskList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    AutomationTriggerType:
+      type: string
+      enum: [LEAD_CREATED, DEAL_STAGE_CHANGED, NO_RESPONSE, DEAL_WON]
+
+    AutomationActionType:
+      type: string
+      enum: [ASSIGN_LEAD_ROUND_ROBIN, SEND_EMAIL, CREATE_TASK, NOTIFY, CALL_AI, WEBHOOK]
+
+    Automation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+        triggerType: { $ref: "#/components/schemas/AutomationTriggerType" }
+        conditionJson: { type: object, nullable: true }
+        actionType: { $ref: "#/components/schemas/AutomationActionType" }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    AutomationCreate:
+      type: object
+      required: [name, triggerType, actionType]
+      properties:
+        name: { type: string }
+        triggerType: { $ref: "#/components/schemas/AutomationTriggerType" }
+        conditionJson: { type: object }
+        actionType: { $ref: "#/components/schemas/AutomationActionType" }
+        isActive: { type: boolean }
+
+    AutomationTriggeredByType:
+      type: string
+      enum: [RULE, AI]
+
+    AutomationExecutionStatus:
+      type: string
+      enum: [EXECUTED, PENDING_APPROVAL, APPROVED, DISMISSED, FAILED]
+      description: PENDING_APPROVAL is FR-052 🔎's human-approval workflow.
+
+    AutomationExecution:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        automationId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid, nullable: true }
+        dealId: { type: string, format: uuid, nullable: true }
+        triggeredByType: { $ref: "#/components/schemas/AutomationTriggeredByType" }
+        status: { $ref: "#/components/schemas/AutomationExecutionStatus" }
+        resultJson: { type: object, nullable: true }
+        error: { type: string, nullable: true }
+        reviewedById: { type: string, format: uuid, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        executedAt: { type: string, format: date-time }
+
+    AutomationExecutionList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AutomationExecution" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        recipientMemberId: { type: string, format: uuid }
+        type: { type: string }
+        payload: { type: object, nullable: true }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    NotificationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+
+    AuditAction:
+      type: string
+      enum: [CREATE, UPDATE, DELETE]
+
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        actorUserId: { type: string, format: uuid, nullable: true }
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        action: { $ref: "#/components/schemas/AuditAction" }
+        oldValue: { type: object, nullable: true }
+        newValue: { type: object, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AuditLogList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AuditLog" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
