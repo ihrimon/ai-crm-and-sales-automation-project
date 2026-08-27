@@ -13,6 +13,11 @@ export interface AuthenticatedUser {
   // brand-new registrant who hasn't created/joined an org yet.
   organizationId?: string;
   role?: OrgRole;
+  // The caller's own OrganizationMember.id (M3) — Lead/Deal `ownerId` and
+  // similar fields reference OrganizationMember, not User, and row-level
+  // scoping rules (e.g. "SALES_REP sees only leads where ownerId is their
+  // own membership," docs/api/README.md §2) compare against exactly this.
+  memberId?: string;
 }
 
 // architecture/README.md §6.1 — "Auth Guard: who are you?", the first gate

@@ -186,7 +186,11 @@ export class AuthService {
     const accessToken = await this.jwtService.signAsync({
       sub: userId,
       email,
-      ...(membership && { organizationId: membership.organizationId, role: membership.role }),
+      ...(membership && {
+        organizationId: membership.organizationId,
+        role: membership.role,
+        memberId: membership.memberId,
+      }),
     });
 
     const refreshTokenRaw = randomBytes(40).toString('hex');
@@ -218,7 +222,9 @@ export class AuthService {
   // case (one user, one org, from onboarding) has exactly one candidate
   // anyway. A real multi-org active-org switcher is a follow-up, not built
   // here — see docs/development-plan/README.md's M2 notes.
-  private async resolveActiveMembership(userId: string): Promise<{ organizationId: string; role: OrgRole } | null> {
+  private async resolveActiveMembership(
+    userId: string,
+  ): Promise<{ organizationId: string; role: OrgRole; memberId: string } | null> {
     // Not a plain Prisma query: OrganizationMember has RLS, and this lookup
     // is inherently cross-organization (there's no "current org" yet — that's
     // exactly what we're resolving). A real bug caught by
@@ -226,13 +232,17 @@ export class AuthService {
     // returned nothing, every time, because RLS correctly saw no
     // app.current_organization_id and filtered every row out. Fixed via a
     // narrow SECURITY DEFINER function — see migration
-    // 20260827085853_resolve_active_membership_fn and
+    // 20260827085853_resolve_active_membership_fn (extended in M3, migration
+    // 20260827151458_..., to also return the membership's own id — Lead.ownerId
+    // and the "SALES_REP sees only own leads" rule both need it) and
     // docs/database/README.md §5.6.
     const rows = await this.prisma.$queryRaw<
-      { organization_id: string; role: OrgRole }[]
+      { member_id: string; organization_id: string; role: OrgRole }[]
     >`SELECT * FROM resolve_active_membership(${userId})`;
     const membership = rows[0];
-    return membership ? { organizationId: membership.organization_id, role: membership.role } : null;
+    return membership
+      ? { organizationId: membership.organization_id, role: membership.role, memberId: membership.member_id }
+      : null;
   }
 
   private toPublicUser(user: { id: string; email: string; emailVerified: boolean; createdAt: Date }): PublicUser {

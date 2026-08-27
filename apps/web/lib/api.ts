@@ -1,14 +1,26 @@
 import type {
   ApiError,
   AuthTokens,
+  Company,
+  CompanyList,
+  Contact,
+  ContactList,
+  CreateCompanyRequest,
+  CreateContactRequest,
+  CreateLeadRequest,
   CreateOrganizationRequest,
   InviteMemberRequest,
+  Lead,
+  LeadList,
   LoginRequest,
   Organization,
   OrganizationMember,
   OrganizationMemberList,
   OrgRole,
   RegisterRequest,
+  UpdateCompanyRequest,
+  UpdateContactRequest,
+  UpdateLeadRequest,
   User,
 } from '@ai-crm/types';
 
@@ -151,5 +163,113 @@ export async function removeMember(accessToken: string, organizationId: string, 
   const res = await authorizedFetch(`/organizations/${organizationId}/members/${memberId}`, accessToken, {
     method: 'DELETE',
   });
+  if (!res.ok) return parseErrorAndThrow(res);
+}
+
+// M3 — Leads (FR-013–FR-018, FR-050 🔎)
+export async function listLeads(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; status?: string; search?: string } = {},
+): Promise<LeadList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.status) query.set('status', params.status);
+  if (params.search) query.set('search', params.search);
+  const res = await authorizedFetch(`/leads?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createLead(accessToken: string, payload: CreateLeadRequest): Promise<Lead> {
+  const res = await authorizedFetch('/leads', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function getLead(accessToken: string, leadId: string): Promise<Lead> {
+  const res = await authorizedFetch(`/leads/${leadId}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateLead(accessToken: string, leadId: string, payload: UpdateLeadRequest): Promise<Lead> {
+  const res = await authorizedFetch(`/leads/${leadId}`, accessToken, { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function deleteLead(accessToken: string, leadId: string): Promise<void> {
+  const res = await authorizedFetch(`/leads/${leadId}`, accessToken, { method: 'DELETE' });
+  if (!res.ok) return parseErrorAndThrow(res);
+}
+
+export async function assignLead(accessToken: string, leadId: string, ownerId: string): Promise<Lead> {
+  const res = await authorizedFetch(`/leads/${leadId}/assign`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ ownerId }),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M3 — Contacts (FR-019–FR-020)
+export async function listContacts(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; companyId?: string } = {},
+): Promise<ContactList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.companyId) query.set('companyId', params.companyId);
+  const res = await authorizedFetch(`/contacts?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createContact(accessToken: string, payload: CreateContactRequest): Promise<Contact> {
+  const res = await authorizedFetch('/contacts', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateContact(accessToken: string, contactId: string, payload: UpdateContactRequest): Promise<Contact> {
+  const res = await authorizedFetch(`/contacts/${contactId}`, accessToken, { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function deleteContact(accessToken: string, contactId: string): Promise<void> {
+  const res = await authorizedFetch(`/contacts/${contactId}`, accessToken, { method: 'DELETE' });
+  if (!res.ok) return parseErrorAndThrow(res);
+}
+
+// M3 — Companies (FR-021–FR-022)
+export async function listCompanies(
+  accessToken: string,
+  params: { page?: number; pageSize?: number } = {},
+): Promise<CompanyList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  const res = await authorizedFetch(`/companies?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createCompany(accessToken: string, payload: CreateCompanyRequest): Promise<Company> {
+  const res = await authorizedFetch('/companies', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateCompany(accessToken: string, companyId: string, payload: UpdateCompanyRequest): Promise<Company> {
+  const res = await authorizedFetch(`/companies/${companyId}`, accessToken, { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function deleteCompany(accessToken: string, companyId: string): Promise<void> {
+  const res = await authorizedFetch(`/companies/${companyId}`, accessToken, { method: 'DELETE' });
   if (!res.ok) return parseErrorAndThrow(res);
 }

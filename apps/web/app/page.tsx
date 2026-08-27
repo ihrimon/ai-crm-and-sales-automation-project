@@ -7,11 +7,11 @@ import { logout as apiLogout } from '../lib/api';
 import { clearSession, readSession, type Session } from '../lib/session';
 
 // Milestone M1 added real /login and /register screens; M2 added
-// /onboarding, /team, /settings. Still no /dashboard (lands with M5), so this
-// placeholder doubles as the minimal proof both milestones ask for:
-// signed-in state persists across a reload, a signed-in user with no
-// organization yet is routed to onboard one, and logout actually revokes the
-// session server-side (FR-003).
+// /onboarding, /team, /settings; M3 added /leads, /contacts, /companies.
+// Still no /dashboard (lands with M5), so this placeholder doubles as the
+// minimal proof each milestone asks for: signed-in state persists across a
+// reload, a signed-in user with no organization yet is routed to onboard
+// one, and logout actually revokes the session server-side (FR-003).
 export default function HomePage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -43,10 +43,19 @@ export default function HomePage() {
         <h1 className="text-2xl font-semibold">Signed in as {session.email}</h1>
         <p className="text-sm text-neutral-500">Role: {session.role}</p>
         <p className="max-w-md text-sm text-neutral-500">
-          The rest of the app (Dashboard, Leads, Deals, …) lands in later milestones — see{' '}
+          The rest of the app (Dashboard, Deals, …) lands in later milestones — see{' '}
           <code>docs/development-plan/README.md</code>.
         </p>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap justify-center gap-3">
+          <Link href="/leads" className="rounded border border-neutral-300 px-4 py-2 text-sm font-medium">
+            Leads
+          </Link>
+          <Link href="/contacts" className="rounded border border-neutral-300 px-4 py-2 text-sm font-medium">
+            Contacts
+          </Link>
+          <Link href="/companies" className="rounded border border-neutral-300 px-4 py-2 text-sm font-medium">
+            Companies
+          </Link>
           <Link href="/team" className="rounded border border-neutral-300 px-4 py-2 text-sm font-medium">
             Team
           </Link>
@@ -76,8 +85,8 @@ export default function HomePage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
       <h1 className="text-2xl font-semibold">AI CRM & Sales Automation</h1>
       <p className="max-w-md text-sm text-neutral-500">
-        Milestone M2 — Organization + RBAC is live. See <code>docs/development-plan/README.md</code> for what&apos;s
-        next.
+        Milestone M3 — Leads, Contacts, Companies is live. See <code>docs/development-plan/README.md</code> for
+        what&apos;s next.
       </p>
       <div className="flex gap-3">
         <Link href="/login" className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white">

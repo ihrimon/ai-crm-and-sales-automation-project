@@ -579,7 +579,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ContactCreate" }
+            schema: { $ref: "#/components/schemas/ContactUpdate" }
       responses:
         "200":
           description: Updated
@@ -651,7 +651,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CompanyCreate" }
+            schema: { $ref: "#/components/schemas/CompanyUpdate" }
       responses:
         "200":
           description: Updated
@@ -1342,13 +1342,27 @@ components:
         companyId: { type: string, format: uuid }
 
     LeadUpdate:
-      allOf:
-        - $ref: "#/components/schemas/LeadCreate"
-        - type: object
-          properties:
-            status: { $ref: "#/components/schemas/LeadStatus" }
-            lostReason: { type: string }
-            nextFollowUpDate: { type: string, format: date-time }
+      # Fixed during M3 implementation: this was `allOf: [LeadCreate, {...}]`,
+      # which inherits LeadCreate's `required: [name]` — meaning PATCH would
+      # require re-sending `name` on every partial update, which isn't what
+      # PATCH means anywhere else in this contract. A real bug caught
+      # building the Lead module, not a deliberate constraint — every field
+      # here is optional, matching how LeadCreate's fields behave on update.
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { type: string }
+        industry: { type: string }
+        jobTitle: { type: string }
+        budget: { type: number }
+        ownerId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/LeadStatus" }
+        lostReason: { type: string }
+        nextFollowUpDate: { type: string, format: date-time }
 
     LeadList:
       type: object
@@ -1420,6 +1434,19 @@ components:
         preferredChannel: { type: string }
         companyId: { type: string, format: uuid }
 
+    # Fixed during M3 implementation, same reasoning as LeadUpdate above:
+    # PATCH /contacts/:id originally reused ContactCreate (required: [name]),
+    # which would force re-sending `name` on every partial update.
+    ContactUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        position: { type: string }
+        preferredChannel: { type: string }
+        companyId: { type: string, format: uuid }
+
     ContactList:
       type: object
       properties:
@@ -1443,6 +1470,15 @@ components:
     CompanyCreate:
       type: object
       required: [name]
+      properties:
+        name: { type: string }
+        website: { type: string }
+        industry: { type: string }
+        companySize: { type: string }
+
+    # Fixed during M3 implementation, same reasoning as LeadUpdate above.
+    CompanyUpdate:
+      type: object
       properties:
         name: { type: string }
         website: { type: string }

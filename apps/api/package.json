@@ -20,7 +20,8 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "testTimeout": 20000
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

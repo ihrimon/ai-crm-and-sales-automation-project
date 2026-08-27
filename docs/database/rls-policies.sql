@@ -121,13 +121,17 @@ CREATE POLICY tenant_isolation_automation_execution ON "AutomationExecution"
 -- membership — not a general-purpose RLS bypass:
 --
 --   CREATE FUNCTION resolve_active_membership(p_user_id text)
---     RETURNS TABLE (organization_id text, role "OrgRole")
+--     RETURNS TABLE (member_id text, organization_id text, role "OrgRole")
 --     LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
---       SELECT "organizationId", "role" FROM "OrganizationMember"
+--       SELECT "id", "organizationId", "role" FROM "OrganizationMember"
 --       WHERE "userId" = p_user_id AND "isActive" = true
 --       ORDER BY "createdAt" ASC LIMIT 1;
 --     $$;
 --   GRANT EXECUTE ON FUNCTION resolve_active_membership(text) TO crm_app;
 --
 -- See migration 20260827085853_resolve_active_membership_fn and
--- AuthService.resolveActiveMembership().
+-- AuthService.resolveActiveMembership(). Extended in M3 (migration
+-- 20260827151458_resolve_active_membership_include_id) to also return the
+-- membership's own `id` — Lead.ownerId references OrganizationMember, not
+-- User, and FR-018/"SALES_REP sees only own leads" (docs/api/README.md §2)
+-- both need it in the JWT/tenant context alongside organizationId and role.

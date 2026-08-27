@@ -38,7 +38,7 @@ export class TenantScopeInterceptor implements NestInterceptor {
 
     const request = context.switchToHttp().getRequest<Request>();
     const user = request.user;
-    if (!user?.organizationId || !user.role) {
+    if (!user?.organizationId || !user.role || !user.memberId) {
       throw new ForbiddenException('An active organization is required for this request.');
     }
 
@@ -55,11 +55,14 @@ export class TenantScopeInterceptor implements NestInterceptor {
     const organizationId = user.organizationId;
     const role = user.role;
     const userId = user.sub;
+    const memberId = user.memberId;
 
     return from(
       this.prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_organization_id', ${organizationId}, true)`;
-        return this.tenantContext.run({ organizationId, userId, role, tx }, () => firstValueFrom(next.handle()));
+        return this.tenantContext.run({ organizationId, userId, role, memberId, tx }, () =>
+          firstValueFrom(next.handle()),
+        );
       }),
     );
   }

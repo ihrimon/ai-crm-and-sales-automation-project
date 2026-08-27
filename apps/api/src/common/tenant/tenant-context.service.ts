@@ -6,6 +6,8 @@ export interface TenantStore {
   organizationId: string;
   userId: string;
   role: OrgRole;
+  // The caller's own OrganizationMember.id (M3) — see AuthenticatedUser.memberId.
+  memberId: string;
   // The Prisma transaction the request is running in — set_config()'d with
   // app.current_organization_id by TenantScopeInterceptor. Every tenant-scoped
   // query must go through THIS client, not the plain PrismaService, or RLS
@@ -49,5 +51,9 @@ export class TenantContextService {
 
   get role(): OrgRole {
     return this.getStoreOrThrow().role;
+  }
+
+  get memberId(): string {
+    return this.getStoreOrThrow().memberId;
   }
 }
