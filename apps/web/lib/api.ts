@@ -1,16 +1,21 @@
 import type {
+  Activity,
+  ActivityList,
   ApiError,
   AuthTokens,
   Company,
   CompanyList,
   Contact,
   ContactList,
+  CreateActivityRequest,
   CreateCompanyRequest,
   CreateContactRequest,
   CreateDealRequest,
   CreateLeadRequest,
   CreateOrganizationRequest,
   CreatePipelineStageRequest,
+  CreateTaskRequest,
+  DashboardMetrics,
   Deal,
   DealList,
   InviteMemberRequest,
@@ -26,11 +31,15 @@ import type {
   PipelineMetrics,
   PipelineStage,
   RegisterRequest,
+  Task,
+  TaskList,
+  TaskStatus,
   UpdateCompanyRequest,
   UpdateContactRequest,
   UpdateDealRequest,
   UpdateLeadRequest,
   UpdatePipelineStageRequest,
+  UpdateTaskRequest,
   User,
 } from '@ai-crm/types';
 
@@ -368,6 +377,76 @@ export async function moveDeal(accessToken: string, dealId: string, payload: Mov
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M5 — Activities (FR-030)
+export async function listActivities(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; leadId?: string; contactId?: string; companyId?: string; dealId?: string } = {},
+): Promise<ActivityList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.leadId) query.set('leadId', params.leadId);
+  if (params.contactId) query.set('contactId', params.contactId);
+  if (params.companyId) query.set('companyId', params.companyId);
+  if (params.dealId) query.set('dealId', params.dealId);
+  const res = await authorizedFetch(`/activities?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createActivity(accessToken: string, payload: CreateActivityRequest): Promise<Activity> {
+  const res = await authorizedFetch('/activities', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M5 — Tasks (FR-031–FR-032)
+export async function listTasks(
+  accessToken: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    assignedToId?: string;
+    status?: TaskStatus;
+    leadId?: string;
+    contactId?: string;
+    companyId?: string;
+    dealId?: string;
+  } = {},
+): Promise<TaskList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.assignedToId) query.set('assignedToId', params.assignedToId);
+  if (params.status) query.set('status', params.status);
+  if (params.leadId) query.set('leadId', params.leadId);
+  if (params.contactId) query.set('contactId', params.contactId);
+  if (params.companyId) query.set('companyId', params.companyId);
+  if (params.dealId) query.set('dealId', params.dealId);
+  const res = await authorizedFetch(`/tasks?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createTask(accessToken: string, payload: CreateTaskRequest): Promise<Task> {
+  const res = await authorizedFetch('/tasks', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateTask(accessToken: string, taskId: string, payload: UpdateTaskRequest): Promise<Task> {
+  const res = await authorizedFetch(`/tasks/${taskId}`, accessToken, { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M5 — Dashboard (FR-033–FR-035)
+export async function getDashboardMetrics(accessToken: string): Promise<DashboardMetrics> {
+  const res = await authorizedFetch('/dashboard/metrics', accessToken);
   if (!res.ok) return parseErrorAndThrow(res);
   return res.json();
 }

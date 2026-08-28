@@ -241,6 +241,88 @@ export interface MoveDealRequest {
   lostReason?: string;
 }
 
+// M5 — Activities, Tasks, Dashboard (FR-030–FR-035)
+export type ActivityType = 'CALL' | 'EMAIL' | 'MEETING' | 'NOTE' | 'STAGE_CHANGE' | 'OTHER';
+
+export interface Activity {
+  id: string;
+  organizationId: string;
+  leadId: string | null;
+  contactId: string | null;
+  companyId: string | null;
+  dealId: string | null;
+  createdById: string | null;
+  type: ActivityType;
+  notes: string | null;
+  occurredAt: string;
+}
+
+export interface ActivityList {
+  data: Activity[];
+  meta: PageMeta;
+}
+
+// Exactly one of leadId/contactId/companyId/dealId must be set
+// (docs/database/README.md §5.2).
+export interface CreateActivityRequest {
+  type: ActivityType;
+  notes?: string;
+  occurredAt?: string;
+  leadId?: string;
+  contactId?: string;
+  companyId?: string;
+  dealId?: string;
+}
+
+export type TaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+
+export interface Task {
+  id: string;
+  organizationId: string;
+  leadId: string | null;
+  contactId: string | null;
+  companyId: string | null;
+  dealId: string | null;
+  assignedToId: string | null;
+  title: string;
+  status: TaskStatus;
+  dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskList {
+  data: Task[];
+  meta: PageMeta;
+}
+
+// Exactly one of leadId/contactId/companyId/dealId must be set
+// (docs/database/README.md §5.2).
+export interface CreateTaskRequest {
+  title: string;
+  dueDate?: string;
+  assignedToId?: string;
+  leadId?: string;
+  contactId?: string;
+  companyId?: string;
+  dealId?: string;
+}
+
+export interface UpdateTaskRequest {
+  status?: TaskStatus;
+  dueDate?: string;
+}
+
+export interface DashboardMetrics {
+  totalLeads: number;
+  qualifiedLeads: number;
+  openDeals: number;
+  wonDeals: number;
+  lostDeals: number;
+  pipelineValue: number;
+  conversionRate: number;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

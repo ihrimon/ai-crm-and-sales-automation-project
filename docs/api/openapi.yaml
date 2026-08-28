@@ -929,6 +929,18 @@ paths:
         - name: status
           in: query
           schema: { $ref: "#/components/schemas/TaskStatus" }
+        - name: leadId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: dealId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: contactId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: companyId
+          in: query
+          schema: { type: string, format: uuid }
       responses:
         "200":
           description: Tasks

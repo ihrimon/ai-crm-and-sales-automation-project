@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ActivityModule } from './activity/activity.module';
 import { AuthModule } from './auth/auth.module';
 import { CompanyModule } from './company/company.module';
 import { ContactModule } from './contact/contact.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { DealModule } from './deal/deal.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { TokenModule } from './common/token/token.module';
@@ -16,14 +18,14 @@ import { HealthModule } from './health/health.module';
 import { LeadModule } from './lead/lead.module';
 import { OrganizationModule } from './organization/organization.module';
 import { PipelineModule } from './pipeline/pipeline.module';
+import { TaskModule } from './task/task.module';
 
-// Feature modules (Activities, Dashboard, Ai, Automation, Notification,
-// Audit) land here one at a time, per docs/development-plan/README.md's
-// M5–M8. Every request passes through, in order (architecture/README.md
-// §6.1): JwtAuthGuard (who are you?) -> RbacGuard (are you allowed?) ->
-// TenantScopeInterceptor (attach + enforce organizationId). Nest runs all
-// global guards before any global interceptor, in registration order, which
-// is exactly this order for free.
+// Feature modules (Ai, Automation, Notification, Audit) land here one at a
+// time, per docs/development-plan/README.md's M6–M8. Every request passes
+// through, in order (architecture/README.md §6.1): JwtAuthGuard (who are
+// you?) -> RbacGuard (are you allowed?) -> TenantScopeInterceptor (attach +
+// enforce organizationId). Nest runs all global guards before any global
+// interceptor, in registration order, which is exactly this order for free.
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -38,6 +40,9 @@ import { PipelineModule } from './pipeline/pipeline.module';
     CompanyModule,
     PipelineModule,
     DealModule,
+    ActivityModule,
+    TaskModule,
+    DashboardModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

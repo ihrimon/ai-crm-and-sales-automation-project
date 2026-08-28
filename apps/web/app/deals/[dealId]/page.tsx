@@ -6,10 +6,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiRequestError, getDeal, listPipelineStages, listPipelines, moveDeal, updateDeal } from '../../../lib/api';
 import { readSession, type Session } from '../../../lib/session';
+import { ActivityTimeline } from '../../../components/activity-timeline';
+import { TaskList } from '../../../components/task-list';
 
-// FR-024, FR-025, FR-028 · docs/ui-ux/README.md §4 "/deals/:id" screen
-// (properties only — Activity Timeline/Tasks land with M5, not built ahead
-// of the milestone that implements them, same call as Lead Detail in M3).
+// FR-024, FR-025, FR-028, FR-030–FR-032 · docs/ui-ux/README.md §4 "/deals/:id"
+// screen — properties, plus the same Activity Timeline/Tasks panels Lead
+// Detail embeds (docs/ui-ux/README.md §5.3), filtered by dealId instead.
 export default function DealDetailPage() {
   const params = useParams<{ dealId: string }>();
   const router = useRouter();
@@ -245,6 +247,13 @@ export default function DealDetailPage() {
           </button>
         )}
       </form>
+
+      {session && (
+        <div className="flex flex-col gap-6 border-t border-neutral-200 pt-6">
+          <ActivityTimeline session={session} relation={{ dealId: deal.id }} canLog={canWrite} />
+          <TaskList session={session} relation={{ dealId: deal.id }} canCreate={canWrite} />
+        </div>
+      )}
     </main>
   );
 }
