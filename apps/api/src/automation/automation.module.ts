@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
 import { QueueModule } from '../common/queue/queue.module';
+import { NotificationModule } from '../notification/notification.module';
 import { AutomationActionService } from './automation-action.service';
 import { AutomationExecutionController } from './automation-execution.controller';
 import { AutomationExecutionService } from './automation-execution.service';
@@ -15,7 +16,7 @@ import { AutomationService } from './automation.service';
 // (AutomationExecutionService.approve()'s CALL_AI email draft) — re-exported
 // from AiModule the same way any other feature module's providers are.
 @Module({
-  imports: [QueueModule, AiModule],
+  imports: [QueueModule, AiModule, NotificationModule],
   controllers: [AutomationController, AutomationExecutionController],
   providers: [
     AutomationService,

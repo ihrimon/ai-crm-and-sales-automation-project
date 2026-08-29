@@ -431,6 +431,41 @@ export interface AutomationExecutionList {
   meta: PageMeta;
 }
 
+// M8 — Audit + Notifications (FR-046–FR-048)
+export interface Notification {
+  id: string;
+  organizationId: string;
+  recipientMemberId: string;
+  type: string;
+  payload: Record<string, unknown> | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface NotificationList {
+  data: Notification[];
+  meta: PageMeta;
+}
+
+export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE';
+
+export interface AuditLog {
+  id: string;
+  organizationId: string;
+  actorUserId: string | null;
+  entityType: string;
+  entityId: string;
+  action: AuditAction;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AuditLogList {
+  data: AuditLog[];
+  meta: PageMeta;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

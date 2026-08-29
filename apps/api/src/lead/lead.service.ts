@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AutomationTriggerType, OrgRole, type Lead, type Prisma } from '@prisma/client';
+import { AuditAction, AutomationTriggerType, OrgRole, type Lead, type Prisma } from '@prisma/client';
+import { AuditLogService } from '../audit/audit-log.service';
 import { AutomationTriggerService } from '../automation/automation-trigger.service';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
 import type { AssignLeadDto } from './dto/assign-lead.dto';
@@ -14,6 +15,7 @@ export class LeadService {
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly automationTriggerService: AutomationTriggerService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(dto: CreateLeadDto) {
@@ -38,6 +40,13 @@ export class LeadService {
       const assigned = await this.tryRoundRobinAssign(lead.id);
       if (assigned) result = assigned;
     }
+
+    await this.auditLogService.record({
+      entityType: 'Lead',
+      entityId: result.id,
+      action: AuditAction.CREATE,
+      newValue: result,
+    });
 
     // FR-043 (M7) — fires after round-robin so LEAD_CREATED automations see
     // the final ownerId. Never allowed to fail lead creation itself: this
@@ -106,18 +115,32 @@ export class LeadService {
   }
 
   async update(id: string, dto: UpdateLeadDto) {
-    await this.findOwnershipScoped(id);
+    const existing = await this.findOwnershipScoped(id);
     if (dto.contactId) await this.assertContactInTenant(dto.contactId);
     if (dto.companyId) await this.assertCompanyInTenant(dto.companyId);
     if (dto.ownerId) await this.assertActiveMemberInTenant(dto.ownerId);
-    return this.tenantContext.tx.lead.update({ where: { id }, data: dto });
+    const updated = await this.tenantContext.tx.lead.update({ where: { id }, data: dto });
+    await this.auditLogService.record({
+      entityType: 'Lead',
+      entityId: id,
+      action: AuditAction.UPDATE,
+      oldValue: existing,
+      newValue: updated,
+    });
+    return updated;
   }
 
   async remove(id: string): Promise<void> {
     // DELETE's x-roles excludes SALES_REP entirely (RbacGuard already blocks
     // it) — no per-row ownership check needed, just tenant-scoped existence.
-    await this.findExistingOrThrow(id);
+    const existing = await this.findExistingOrThrow(id);
     await this.tenantContext.tx.lead.delete({ where: { id } });
+    await this.auditLogService.record({
+      entityType: 'Lead',
+      entityId: id,
+      action: AuditAction.DELETE,
+      oldValue: existing,
+    });
   }
 
   async assign(id: string, dto: AssignLeadDto) {

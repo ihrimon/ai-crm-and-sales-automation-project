@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Automation, AutomationActionType, AutomationExecutionStatus, AutomationTriggeredByType } from '@prisma/client';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
+import { NotificationService } from '../notification/notification.service';
 import type { AutomationEventContext } from './automation-event-context';
 
 // FR-044–FR-045. Every path here ends in exactly one AutomationExecution row
@@ -13,7 +14,10 @@ import type { AutomationEventContext } from './automation-event-context';
 export class AutomationActionService {
   private readonly logger = new Logger(AutomationActionService.name);
 
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   // architecture/README.md §6.3: CALL_AI is the one actionType that's
   // "AI-derived" (FR-052 🔎) — it never executes here, only ever logs a
@@ -84,13 +88,13 @@ export class AutomationActionService {
         if (!context.ownerId) {
           return { skipped: true, reason: 'No recipient — the lead/deal has no owner.' };
         }
-        const notification = await this.tenantContext.tx.notification.create({
-          data: {
-            organizationId: this.tenantContext.organizationId,
-            recipientMemberId: context.ownerId,
-            type: 'AUTOMATION',
-            payload: { automationId: automation.id, automationName: automation.name },
-          },
+        // M8 — routed through NotificationService.create() now that it
+        // exists, instead of a direct tenantContext.tx.notification.create()
+        // call, so there's one write path for notifications, not two.
+        const notification = await this.notificationService.create({
+          recipientMemberId: context.ownerId,
+          type: 'AUTOMATION',
+          payload: { automationId: automation.id, automationName: automation.name },
         });
         return { notificationId: notification.id };
       }

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrgRole } from '@prisma/client';
+import { AuditAction, OrgRole } from '@prisma/client';
+import { AuditLogService } from '../audit/audit-log.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -28,6 +29,7 @@ export class OrganizationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   // No tenant context exists yet — the caller doesn't have an organization
@@ -131,9 +133,16 @@ export class OrganizationService {
       });
     }
 
-    return this.tenantContext.tx.organizationMember.create({
+    const created = await this.tenantContext.tx.organizationMember.create({
       data: { organizationId: this.tenantContext.organizationId, userId: user.id, role: dto.role, isActive: true },
     });
+    await this.auditLogService.record({
+      entityType: 'OrganizationMember',
+      entityId: created.id,
+      action: AuditAction.CREATE,
+      newValue: created,
+    });
+    return created;
   }
 
   async updateMember(memberId: string, dto: UpdateMemberDto) {
@@ -147,10 +156,18 @@ export class OrganizationService {
       await this.assertNotLastActiveOwner(member.id);
     }
 
-    return this.tenantContext.tx.organizationMember.update({
+    const updated = await this.tenantContext.tx.organizationMember.update({
       where: { id: memberId },
       data: dto,
     });
+    await this.auditLogService.record({
+      entityType: 'OrganizationMember',
+      entityId: memberId,
+      action: AuditAction.UPDATE,
+      oldValue: member,
+      newValue: updated,
+    });
+    return updated;
   }
 
   async removeMember(memberId: string): Promise<void> {
@@ -159,6 +176,12 @@ export class OrganizationService {
       await this.assertNotLastActiveOwner(member.id);
     }
     await this.tenantContext.tx.organizationMember.delete({ where: { id: memberId } });
+    await this.auditLogService.record({
+      entityType: 'OrganizationMember',
+      entityId: memberId,
+      action: AuditAction.DELETE,
+      oldValue: member,
+    });
   }
 
   private async findMemberOrThrow(memberId: string) {

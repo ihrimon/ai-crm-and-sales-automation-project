@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AutomationTriggerType, OrgRole, type Deal, type PipelineStage, type Prisma } from '@prisma/client';
+import { AuditAction, AutomationTriggerType, OrgRole, type Deal, type PipelineStage, type Prisma } from '@prisma/client';
+import { AuditLogService } from '../audit/audit-log.service';
 import { AutomationTriggerService } from '../automation/automation-trigger.service';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
 import type { CreateDealDto } from './dto/create-deal.dto';
@@ -14,6 +15,7 @@ export class DealService {
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly automationTriggerService: AutomationTriggerService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(dto: CreateDealDto) {
@@ -23,9 +25,16 @@ export class DealService {
     if (dto.companyId) await this.assertCompanyInTenant(dto.companyId);
     if (dto.ownerId) await this.assertActiveMemberInTenant(dto.ownerId);
 
-    return this.tenantContext.tx.deal.create({
+    const deal = await this.tenantContext.tx.deal.create({
       data: { ...dto, organizationId: this.tenantContext.organizationId },
     });
+    await this.auditLogService.record({
+      entityType: 'Deal',
+      entityId: deal.id,
+      action: AuditAction.CREATE,
+      newValue: deal,
+    });
+    return deal;
   }
 
   async findAll(query: ListDealsQueryDto) {
@@ -58,7 +67,7 @@ export class DealService {
   }
 
   async update(id: string, dto: UpdateDealDto) {
-    await this.findOwnershipScoped(id);
+    const existing = await this.findOwnershipScoped(id);
     let stage: PipelineStage | undefined;
     if (dto.pipelineStageId) {
       stage = await this.assertStageInTenant(dto.pipelineStageId);
@@ -69,6 +78,13 @@ export class DealService {
     if (dto.companyId) await this.assertCompanyInTenant(dto.companyId);
     if (dto.ownerId) await this.assertActiveMemberInTenant(dto.ownerId);
     const deal = await this.tenantContext.tx.deal.update({ where: { id }, data: dto });
+    await this.auditLogService.record({
+      entityType: 'Deal',
+      entityId: id,
+      action: AuditAction.UPDATE,
+      oldValue: existing,
+      newValue: deal,
+    });
     if (stage) await this.fireDealStageTriggers(deal, stage);
     return deal;
   }
@@ -78,13 +94,20 @@ export class DealService {
   // stage without a lostReason is rejected server-side, not just discouraged
   // by the UI prompt (docs/ui-ux/README.md §5.4).
   async move(id: string, dto: MoveDealDto) {
-    await this.findOwnershipScoped(id);
+    const existing = await this.findOwnershipScoped(id);
     const stage = await this.assertStageInTenant(dto.pipelineStageId);
     this.assertLostReasonProvided(stage, dto.lostReason);
 
     const deal = await this.tenantContext.tx.deal.update({
       where: { id },
       data: { pipelineStageId: dto.pipelineStageId, lostReason: dto.lostReason },
+    });
+    await this.auditLogService.record({
+      entityType: 'Deal',
+      entityId: id,
+      action: AuditAction.UPDATE,
+      oldValue: existing,
+      newValue: deal,
     });
     await this.fireDealStageTriggers(deal, stage);
     return deal;

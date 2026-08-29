@@ -44,11 +44,14 @@ describe('OrganizationService', () => {
   let tenantContext: ReturnType<typeof buildTenantContextMock>;
   let service: OrganizationService;
 
+  let auditLogService: { record: jest.Mock };
+
   beforeEach(() => {
     prisma = buildPrismaMock();
     tenantContext = buildTenantContextMock(prisma);
+    auditLogService = { record: jest.fn() };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new OrganizationService(prisma, tenantContext as any);
+    service = new OrganizationService(prisma, tenantContext as any, auditLogService as never);
   });
 
   describe('create', () => {

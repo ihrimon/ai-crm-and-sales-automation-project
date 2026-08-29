@@ -5,7 +5,6 @@ function buildTxMock() {
   return {
     automationExecution: { create: jest.fn() },
     task: { create: jest.fn() },
-    notification: { create: jest.fn() },
   };
 }
 
@@ -14,13 +13,15 @@ const AUTOMATION = { id: 'automation-1', name: 'My Automation', actionType: Auto
 describe('AutomationActionService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tx: any;
+  let notificationService: { create: jest.Mock };
   let service: AutomationActionService;
 
   beforeEach(() => {
     tx = buildTxMock();
+    notificationService = { create: jest.fn() };
     const tenantContext = { tx, organizationId: 'org-1', userId: 'user-1', memberId: 'member-1', role: 'OWNER' };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new AutomationActionService(tenantContext as any);
+    service = new AutomationActionService(tenantContext as any, notificationService as never);
   });
 
   describe('CALL_AI — never executes here, only logs PENDING_APPROVAL (FR-052 🔎)', () => {
@@ -39,7 +40,7 @@ describe('AutomationActionService', () => {
         },
       });
       expect(tx.task.create).not.toHaveBeenCalled();
-      expect(tx.notification.create).not.toHaveBeenCalled();
+      expect(notificationService.create).not.toHaveBeenCalled();
     });
   });
 
@@ -73,14 +74,16 @@ describe('AutomationActionService', () => {
   });
 
   describe('NOTIFY', () => {
-    it('creates a Notification for the owner', async () => {
-      tx.notification.create.mockResolvedValue({ id: 'notif-1' });
+    it('creates a Notification for the owner via NotificationService (M8)', async () => {
+      notificationService.create.mockResolvedValue({ id: 'notif-1' });
       const automation = { ...AUTOMATION, actionType: AutomationActionType.NOTIFY };
 
       await service.execute(automation as never, { leadId: 'lead-1', ownerId: 'member-2', fields: {} });
 
-      expect(tx.notification.create).toHaveBeenCalledWith({
-        data: { organizationId: 'org-1', recipientMemberId: 'member-2', type: 'AUTOMATION', payload: { automationId: 'automation-1', automationName: 'My Automation' } },
+      expect(notificationService.create).toHaveBeenCalledWith({
+        recipientMemberId: 'member-2',
+        type: 'AUTOMATION',
+        payload: { automationId: 'automation-1', automationName: 'My Automation' },
       });
     });
 
@@ -89,7 +92,7 @@ describe('AutomationActionService', () => {
 
       await service.execute(automation as never, { leadId: 'lead-1', ownerId: null, fields: {} });
 
-      expect(tx.notification.create).not.toHaveBeenCalled();
+      expect(notificationService.create).not.toHaveBeenCalled();
       expect(tx.automationExecution.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ status: AutomationExecutionStatus.EXECUTED, resultJson: { skipped: true, reason: expect.any(String) } }),
       });

@@ -3,6 +3,7 @@ import type {
   ActivityList,
   AIAnalysis,
   ApiError,
+  AuditLogList,
   Automation,
   AutomationExecution,
   AutomationExecutionList,
@@ -31,6 +32,8 @@ import type {
   LeadList,
   LoginRequest,
   MoveDealRequest,
+  Notification,
+  NotificationList,
   Organization,
   OrganizationMember,
   OrganizationMemberList,
@@ -596,6 +599,42 @@ export async function approveAutomationExecution(accessToken: string, executionI
 
 export async function rejectAutomationExecution(accessToken: string, executionId: string): Promise<AutomationExecution> {
   const res = await authorizedFetch(`/automation-executions/${executionId}/reject`, accessToken, { method: 'POST' });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M8 — Notifications (FR-046–FR-047). Always scoped to the caller's own
+// OrganizationMember — never another member's.
+export async function listNotifications(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; isRead?: boolean } = {},
+): Promise<NotificationList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.isRead !== undefined) query.set('isRead', String(params.isRead));
+  const res = await authorizedFetch(`/notifications?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function markNotificationRead(accessToken: string, notificationId: string): Promise<Notification> {
+  const res = await authorizedFetch(`/notifications/${notificationId}/read`, accessToken, { method: 'PATCH' });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// M8 — Audit (FR-048). OWNER/ADMIN/VIEWER only.
+export async function listAuditLogs(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; entityType?: string; entityId?: string } = {},
+): Promise<AuditLogList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.entityType) query.set('entityType', params.entityType);
+  if (params.entityId) query.set('entityId', params.entityId);
+  const res = await authorizedFetch(`/audit-logs?${query.toString()}`, accessToken);
   if (!res.ok) return parseErrorAndThrow(res);
   return res.json();
 }

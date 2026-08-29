@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ActivityModule } from './activity/activity.module';
 import { AiModule } from './ai/ai.module';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { AutomationModule } from './automation/automation.module';
 import { CompanyModule } from './company/company.module';
@@ -18,6 +19,7 @@ import { TenantModule } from './common/tenant/tenant.module';
 import { TenantScopeInterceptor } from './common/tenant/tenant-scope.interceptor';
 import { HealthModule } from './health/health.module';
 import { LeadModule } from './lead/lead.module';
+import { NotificationModule } from './notification/notification.module';
 import { OrganizationModule } from './organization/organization.module';
 import { PipelineModule } from './pipeline/pipeline.module';
 import { TaskModule } from './task/task.module';
@@ -53,6 +55,8 @@ import { TaskModule } from './task/task.module';
     DashboardModule,
     AiModule,
     AutomationModule,
+    AuditModule,
+    NotificationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

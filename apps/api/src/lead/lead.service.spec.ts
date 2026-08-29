@@ -25,12 +25,14 @@ describe('LeadService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tx: any;
   let automationTriggerService: { evaluateAndExecute: jest.Mock };
+  let auditLogService: { record: jest.Mock };
 
   function buildService(role: OrgRole = OrgRole.OWNER) {
     tx = buildTxMock();
     automationTriggerService = { evaluateAndExecute: jest.fn().mockResolvedValue(undefined) };
+    auditLogService = { record: jest.fn().mockResolvedValue(undefined) };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new LeadService(buildTenantContextMock(tx, role) as any, automationTriggerService as any);
+    return new LeadService(buildTenantContextMock(tx, role) as any, automationTriggerService as any, auditLogService as any);
   }
 
   describe('create', () => {
