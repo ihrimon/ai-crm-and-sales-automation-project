@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrgRole, type Prisma } from '@prisma/client';
+import { AutomationTriggerType, OrgRole, type Deal, type PipelineStage, type Prisma } from '@prisma/client';
+import { AutomationTriggerService } from '../automation/automation-trigger.service';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
 import type { CreateDealDto } from './dto/create-deal.dto';
 import type { ListDealsQueryDto } from './dto/list-deals-query.dto';
@@ -10,7 +11,10 @@ import type { UpdateDealDto } from './dto/update-deal.dto';
 // (RLS-scoped) — see docs/database/README.md §5.6.
 @Injectable()
 export class DealService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly automationTriggerService: AutomationTriggerService,
+  ) {}
 
   async create(dto: CreateDealDto) {
     await this.assertStageInTenant(dto.pipelineStageId);
@@ -55,15 +59,18 @@ export class DealService {
 
   async update(id: string, dto: UpdateDealDto) {
     await this.findOwnershipScoped(id);
+    let stage: PipelineStage | undefined;
     if (dto.pipelineStageId) {
-      const stage = await this.assertStageInTenant(dto.pipelineStageId);
+      stage = await this.assertStageInTenant(dto.pipelineStageId);
       this.assertLostReasonProvided(stage, dto.lostReason);
     }
     if (dto.leadId) await this.assertLeadInTenant(dto.leadId);
     if (dto.contactId) await this.assertContactInTenant(dto.contactId);
     if (dto.companyId) await this.assertCompanyInTenant(dto.companyId);
     if (dto.ownerId) await this.assertActiveMemberInTenant(dto.ownerId);
-    return this.tenantContext.tx.deal.update({ where: { id }, data: dto });
+    const deal = await this.tenantContext.tx.deal.update({ where: { id }, data: dto });
+    if (stage) await this.fireDealStageTriggers(deal, stage);
+    return deal;
   }
 
   // FR-025, FR-028: "move" is the sanctioned way a deal changes pipeline
@@ -75,10 +82,48 @@ export class DealService {
     const stage = await this.assertStageInTenant(dto.pipelineStageId);
     this.assertLostReasonProvided(stage, dto.lostReason);
 
-    return this.tenantContext.tx.deal.update({
+    const deal = await this.tenantContext.tx.deal.update({
       where: { id },
       data: { pipelineStageId: dto.pipelineStageId, lostReason: dto.lostReason },
     });
+    await this.fireDealStageTriggers(deal, stage);
+    return deal;
+  }
+
+  // FR-043 (M7) — DEAL_STAGE_CHANGED fires on every stage change;
+  // DEAL_WON additionally fires when the destination stage is a Won stage.
+  // Both go through the same defense-in-depth try/catch as
+  // LeadService.create()'s LEAD_CREATED trigger: a broken automation must
+  // never fail the deal update/move itself.
+  private async fireDealStageTriggers(deal: Deal, stage: PipelineStage): Promise<void> {
+    const fields = this.buildDealConditionFields(deal, stage);
+    try {
+      await this.automationTriggerService.evaluateAndExecute(AutomationTriggerType.DEAL_STAGE_CHANGED, {
+        dealId: deal.id,
+        ownerId: deal.ownerId,
+        fields,
+      });
+      if (stage.isWon) {
+        await this.automationTriggerService.evaluateAndExecute(AutomationTriggerType.DEAL_WON, {
+          dealId: deal.id,
+          ownerId: deal.ownerId,
+          fields,
+        });
+      }
+    } catch {
+      // deliberately swallowed — see comment above.
+    }
+  }
+
+  private buildDealConditionFields(deal: Deal, stage: PipelineStage): Record<string, unknown> {
+    return {
+      value: deal.value ? Number(deal.value) : null,
+      currency: deal.currency,
+      probability: deal.probability,
+      stageName: stage.name,
+      isWon: stage.isWon,
+      isLost: stage.isLost,
+    };
   }
 
   // GET/PATCH/move: "all roles — SALES_REP only if owner" (docs/api/README.md §3).

@@ -1043,6 +1043,11 @@ paths:
       tags: [Automations]
       operationId: listAutomations
       x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      description: >
+        M7: response changed from a bare array to the paginated
+        {data, meta} shape every other list endpoint in this contract uses —
+        page/pageSize params were already documented here with nothing in
+        the response to make them useful (no total count).
       parameters:
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/pageSize"
@@ -1051,9 +1056,7 @@ paths:
           description: Automations
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Automation" }
+              schema: { $ref: "#/components/schemas/AutomationList" }
     post:
       tags: [Automations]
       operationId: createAutomation
@@ -1076,6 +1079,21 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      tags: [Automations]
+      operationId: getAutomation
+      x-roles: [OWNER, ADMIN, SALES_MANAGER]
+      description: >
+        Added in M7 — docs/api/README.md's endpoint table already documented
+        this route, but it was missing from this spec (a design-doc-vs-actual-
+        contract gap, not a UI-need gap like M5/M6's).
+      responses:
+        "200":
+          description: Automation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Automations]
       operationId: updateAutomation
@@ -1084,7 +1102,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AutomationCreate" }
+            schema: { $ref: "#/components/schemas/AutomationUpdate" }
       responses:
         "200":
           description: Updated
@@ -1732,6 +1750,27 @@ components:
         conditionJson: { type: object }
         actionType: { $ref: "#/components/schemas/AutomationActionType" }
         isActive: { type: boolean }
+
+    # Added in M7 — updateAutomation previously reused AutomationCreate,
+    # whose required: [name, triggerType, actionType] forced every PATCH to
+    # resend all three (the identical bug class LeadUpdate/ContactCreate/
+    # CompanyCreate/DealUpdate already needed this same fix for, M3/M4).
+    AutomationUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        triggerType: { $ref: "#/components/schemas/AutomationTriggerType" }
+        conditionJson: { type: object }
+        actionType: { $ref: "#/components/schemas/AutomationActionType" }
+        isActive: { type: boolean }
+
+    AutomationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Automation" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
 
     AutomationTriggeredByType:
       type: string

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrgRole, type Prisma } from '@prisma/client';
+import { AutomationTriggerType, OrgRole, type Lead, type Prisma } from '@prisma/client';
+import { AutomationTriggerService } from '../automation/automation-trigger.service';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
 import type { AssignLeadDto } from './dto/assign-lead.dto';
 import type { CreateLeadDto } from './dto/create-lead.dto';
@@ -10,7 +11,10 @@ import type { UpdateLeadDto } from './dto/update-lead.dto';
 // (RLS-scoped) — see docs/database/README.md §5.6.
 @Injectable()
 export class LeadService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly automationTriggerService: AutomationTriggerService,
+  ) {}
 
   async create(dto: CreateLeadDto) {
     if (dto.contactId) await this.assertContactInTenant(dto.contactId);
@@ -24,13 +28,43 @@ export class LeadService {
     // FR-050 🔎 — architecture/README.md §6.4: a built-in, non-AI action that
     // runs immediately (no approval step, no queue — that's specifically for
     // AI/slow work per ADR-006). The general Automation engine (Automation/
-    // AutomationExecution CRUD + logging) is M7's job; this is the one
-    // concrete action M3 is tasked with delivering directly.
+    // AutomationExecution CRUD + logging) is M7's job; round-robin stays
+    // inline here rather than being folded into it — docs/development-plan/
+    // README.md §4.1d's call, reconfirmed in §M7: no task in M7's list asks
+    // for that refactor, and doing it anyway would risk the FOR UPDATE
+    // locking this already-tested path depends on for no required benefit.
+    let result = lead;
     if (!dto.ownerId) {
       const assigned = await this.tryRoundRobinAssign(lead.id);
-      if (assigned) return assigned;
+      if (assigned) result = assigned;
     }
-    return lead;
+
+    // FR-043 (M7) — fires after round-robin so LEAD_CREATED automations see
+    // the final ownerId. Never allowed to fail lead creation itself: this
+    // try/catch is a second line of defense on top of
+    // AutomationTriggerService already swallowing per-automation errors.
+    try {
+      await this.automationTriggerService.evaluateAndExecute(AutomationTriggerType.LEAD_CREATED, {
+        leadId: result.id,
+        ownerId: result.ownerId,
+        fields: this.buildLeadConditionFields(result),
+      });
+    } catch {
+      // deliberately swallowed — see comment above.
+    }
+
+    return result;
+  }
+
+  private buildLeadConditionFields(lead: Lead): Record<string, unknown> {
+    return {
+      source: lead.source,
+      industry: lead.industry,
+      jobTitle: lead.jobTitle,
+      budget: lead.budget ? Number(lead.budget) : null,
+      status: lead.status,
+      score: lead.score,
+    };
   }
 
   async findAll(query: ListLeadsQueryDto) {

@@ -370,6 +370,67 @@ export interface UpdateEmailDraftRequest {
   status?: EmailDraftStatus;
 }
 
+// M7 — Automation Engine (FR-042–FR-045, FR-052 🔎)
+export type AutomationTriggerType = 'LEAD_CREATED' | 'DEAL_STAGE_CHANGED' | 'NO_RESPONSE' | 'DEAL_WON';
+export type AutomationActionType = 'ASSIGN_LEAD_ROUND_ROBIN' | 'SEND_EMAIL' | 'CREATE_TASK' | 'NOTIFY' | 'CALL_AI' | 'WEBHOOK';
+
+// {field, operator, value} — the only conditionJson shape the API accepts
+// (apps/api/src/automation/automation-condition.util.ts).
+export interface AutomationConditionRule {
+  field: string;
+  operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains';
+  value: string | number | boolean;
+}
+
+export interface Automation {
+  id: string;
+  organizationId: string;
+  name: string;
+  triggerType: AutomationTriggerType;
+  conditionJson: AutomationConditionRule | null;
+  actionType: AutomationActionType;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AutomationList {
+  data: Automation[];
+  meta: PageMeta;
+}
+
+export interface CreateAutomationRequest {
+  name: string;
+  triggerType: AutomationTriggerType;
+  conditionJson?: AutomationConditionRule;
+  actionType: AutomationActionType;
+  isActive?: boolean;
+}
+
+export type UpdateAutomationRequest = Partial<CreateAutomationRequest>;
+
+export type AutomationTriggeredByType = 'RULE' | 'AI';
+export type AutomationExecutionStatus = 'EXECUTED' | 'PENDING_APPROVAL' | 'APPROVED' | 'DISMISSED' | 'FAILED';
+
+export interface AutomationExecution {
+  id: string;
+  organizationId: string;
+  automationId: string;
+  leadId: string | null;
+  dealId: string | null;
+  triggeredByType: AutomationTriggeredByType;
+  status: AutomationExecutionStatus;
+  resultJson: Record<string, unknown> | null;
+  error: string | null;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  executedAt: string;
+}
+
+export interface AutomationExecutionList {
+  data: AutomationExecution[];
+  meta: PageMeta;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

@@ -4,6 +4,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ActivityModule } from './activity/activity.module';
 import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
+import { AutomationModule } from './automation/automation.module';
 import { CompanyModule } from './company/company.module';
 import { ContactModule } from './contact/contact.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -21,15 +22,18 @@ import { OrganizationModule } from './organization/organization.module';
 import { PipelineModule } from './pipeline/pipeline.module';
 import { TaskModule } from './task/task.module';
 
-// Feature modules (Automation, Notification, Audit) land here one at a time,
-// per docs/development-plan/README.md's M7–M8. Every request passes
-// through, in order (architecture/README.md §6.1): JwtAuthGuard (who are
-// you?) -> RbacGuard (are you allowed?) -> TenantScopeInterceptor (attach +
-// enforce organizationId). Nest runs all global guards before any global
+// Feature modules (Notification, Audit) land here one at a time, per
+// docs/development-plan/README.md's M8. Every request passes through, in
+// order (architecture/README.md §6.1): JwtAuthGuard (who are you?) ->
+// RbacGuard (are you allowed?) -> TenantScopeInterceptor (attach + enforce
+// organizationId). Nest runs all global guards before any global
 // interceptor, in registration order, which is exactly this order for free.
 // AiModule (M6) is the first module with work that happens *outside* that
 // per-request pipeline — see AiProcessor / TenantContextService for how a
-// background job re-establishes tenant scope on its own.
+// background job re-establishes tenant scope on its own. AutomationModule
+// (M7) is imported directly by LeadModule/DealModule too, not just here —
+// see AutomationTriggerService for why (LEAD_CREATED/DEAL_STAGE_CHANGED/
+// DEAL_WON hook into those services' own write paths).
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -48,6 +52,7 @@ import { TaskModule } from './task/task.module';
     TaskModule,
     DashboardModule,
     AiModule,
+    AutomationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

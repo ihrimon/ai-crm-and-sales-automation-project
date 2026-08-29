@@ -10,6 +10,9 @@ import { AnthropicProviderAdapter } from './provider/anthropic-provider.adapter'
 import { aiProviderAdapterProvider } from './provider/ai-provider.factory';
 import { StubProviderAdapter } from './provider/stub-provider.adapter';
 
+// AI_PROVIDER_ADAPTER is exported (M7) so AutomationModule can reuse the
+// same adapter for AutomationExecutionService.approve()'s CALL_AI email
+// draft, instead of standing up a second Anthropic/Stub selection.
 @Module({
   imports: [QueueModule],
   controllers: [AiAnalysisController, LeadEmailDraftController, EmailDraftController],
@@ -21,5 +24,6 @@ import { StubProviderAdapter } from './provider/stub-provider.adapter';
     StubProviderAdapter,
     aiProviderAdapterProvider,
   ],
+  exports: [aiProviderAdapterProvider],
 })
 export class AiModule {}

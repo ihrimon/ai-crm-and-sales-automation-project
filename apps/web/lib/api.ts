@@ -3,12 +3,17 @@ import type {
   ActivityList,
   AIAnalysis,
   ApiError,
+  Automation,
+  AutomationExecution,
+  AutomationExecutionList,
+  AutomationList,
   AuthTokens,
   Company,
   CompanyList,
   Contact,
   ContactList,
   CreateActivityRequest,
+  CreateAutomationRequest,
   CreateCompanyRequest,
   CreateContactRequest,
   CreateDealRequest,
@@ -38,6 +43,7 @@ import type {
   Task,
   TaskList,
   TaskStatus,
+  UpdateAutomationRequest,
   UpdateCompanyRequest,
   UpdateContactRequest,
   UpdateDealRequest,
@@ -540,4 +546,56 @@ export async function pollEmailDraft(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return getEmailDraft(accessToken, emailDraftId);
+}
+
+// M7 — Automations (FR-042–FR-045, FR-052 🔎)
+export async function listAutomations(accessToken: string, params: { page?: number; pageSize?: number } = {}): Promise<AutomationList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  const res = await authorizedFetch(`/automations?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function createAutomation(accessToken: string, payload: CreateAutomationRequest): Promise<Automation> {
+  const res = await authorizedFetch('/automations', accessToken, { method: 'POST', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateAutomation(accessToken: string, automationId: string, payload: UpdateAutomationRequest): Promise<Automation> {
+  const res = await authorizedFetch(`/automations/${automationId}`, accessToken, { method: 'PATCH', body: JSON.stringify(payload) });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function deleteAutomation(accessToken: string, automationId: string): Promise<void> {
+  const res = await authorizedFetch(`/automations/${automationId}`, accessToken, { method: 'DELETE' });
+  if (!res.ok) return parseErrorAndThrow(res);
+}
+
+export async function listAutomationExecutions(
+  accessToken: string,
+  params: { page?: number; pageSize?: number; status?: string } = {},
+): Promise<AutomationExecutionList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.status) query.set('status', params.status);
+  const res = await authorizedFetch(`/automation-executions?${query.toString()}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function approveAutomationExecution(accessToken: string, executionId: string): Promise<AutomationExecution> {
+  const res = await authorizedFetch(`/automation-executions/${executionId}/approve`, accessToken, { method: 'POST' });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function rejectAutomationExecution(accessToken: string, executionId: string): Promise<AutomationExecution> {
+  const res = await authorizedFetch(`/automation-executions/${executionId}/reject`, accessToken, { method: 'POST' });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
 }
