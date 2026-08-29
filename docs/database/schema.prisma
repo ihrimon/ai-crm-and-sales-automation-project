@@ -387,17 +387,32 @@ enum AIAnalysisType {
   SUMMARY
 }
 
+// PENDING/COMPLETED/FAILED — added in M6, not in the original Phase 07 pass.
+// The async 202-Accepted flow (architecture/README.md §6.2) needs a row to
+// exist (and be pollable by id) the instant POST .../ai-analyses returns,
+// before the worker has produced a result — every result field below is
+// already nullable, but nothing distinguished "still processing" from "the
+// worker finished and genuinely found nothing" without this. See
+// docs/development-plan/README.md §M6 for the full story.
+enum AIAnalysisStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
 model AIAnalysis {
-  id                String         @id @default(uuid())
+  id                String            @id @default(uuid())
   organizationId    String
   leadId            String
   type              AIAnalysisType
+  status            AIAnalysisStatus  @default(PENDING)
   score             Int?
   classification    String?
   reasons           Json?
-  recommendedAction String?        // FR-051 🔎
+  recommendedAction String?           // FR-051 🔎
   rawOutput         Json?
-  createdAt         DateTime       @default(now())
+  errorMessage      String?           // safe, user-facing text only — never a raw provider stack trace (FR-041, NFR-039)
+  createdAt         DateTime          @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -406,10 +421,15 @@ model AIAnalysis {
   @@index([organizationId, leadId])
 }
 
+// PENDING/FAILED added in M6, alongside making subject/body nullable — same
+// reason as AIAnalysisStatus above: the placeholder row created at enqueue
+// time genuinely has no subject/body yet.
 enum EmailDraftStatus {
+  PENDING
   DRAFT
   DISCARDED
   SENT_MANUALLY
+  FAILED
 }
 
 // FR-039 — the system never sends this automatically; status only ever
@@ -420,10 +440,11 @@ model EmailDraft {
   leadId         String?
   contactId      String?
   createdById    String?
-  subject        String
-  body           String
+  subject        String?
+  body           String?
   tone           String?
-  status         EmailDraftStatus @default(DRAFT)
+  status         EmailDraftStatus @default(PENDING)
+  errorMessage   String?          // safe, user-facing text only — never a raw provider stack trace (FR-041, NFR-039)
   createdAt      DateTime         @default(now())
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)

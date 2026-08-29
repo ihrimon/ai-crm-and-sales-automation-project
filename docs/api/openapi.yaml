@@ -457,8 +457,11 @@ paths:
       responses:
         "200":
           description: >
-            Analysis result. `recommendedAction` (FR-051 🔎) is populated once the
-            worker's response passes shape validation (ADR-007).
+            Analysis result. Poll this until `status` is `COMPLETED` or `FAILED`
+            (it starts `PENDING`) — `recommendedAction` (FR-051 🔎) and the other
+            result fields are populated once the worker's response passes shape
+            validation (ADR-007); `errorMessage` is populated only when `status`
+            is `FAILED`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AIAnalysis" }
@@ -494,6 +497,24 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      tags: [AI]
+      operationId: getEmailDraft
+      x-roles: [OWNER, ADMIN, SALES_MANAGER, SALES_REP]
+      description: >
+        Added in M6 — the "async, same pattern as ai-analyses" note on
+        createLeadEmailDraft implies a poll target, which this endpoint was
+        missing from the original contract pass. Poll until `status` leaves
+        `PENDING`. Reads are broader than writes: the creator, or any
+        manager-tier role (updateEmailDraft additionally requires OWNER/ADMIN
+        specifically, or the creator — SALES_MANAGER can read but not edit).
+      responses:
+        "200":
+          description: Draft
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailDraft" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [AI]
       operationId: updateEmailDraft
@@ -1388,6 +1409,14 @@ components:
       type: string
       enum: [SCORE, QUALIFICATION, SUMMARY]
 
+    # PENDING/COMPLETED/FAILED — added in M6 (docs/database/README.md §5.7).
+    # The 202-Accepted flow (architecture/README.md §6.2) needs a way to
+    # distinguish "still processing" from "the worker finished" when polling
+    # GET .../ai-analyses/{analysisId}.
+    AIAnalysisStatus:
+      type: string
+      enum: [PENDING, COMPLETED, FAILED]
+
     AIAnalysis:
       type: object
       properties:
@@ -1395,6 +1424,7 @@ components:
         organizationId: { type: string, format: uuid }
         leadId: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/AIAnalysisType" }
+        status: { $ref: "#/components/schemas/AIAnalysisStatus" }
         score: { type: integer, nullable: true }
         classification: { type: string, nullable: true }
         reasons:
@@ -1402,11 +1432,17 @@ components:
           items: { type: string }
           nullable: true
         recommendedAction: { type: string, nullable: true, description: "FR-051 🔎" }
+        errorMessage:
+          type: string
+          nullable: true
+          description: Safe, user-facing text only when status is FAILED (FR-041, NFR-039) — never a raw provider error.
         createdAt: { type: string, format: date-time }
 
+    # PENDING/FAILED added in M6 for the same reason as AIAnalysisStatus —
+    # docs/database/README.md §5.7.
     EmailDraftStatus:
       type: string
-      enum: [DRAFT, DISCARDED, SENT_MANUALLY]
+      enum: [PENDING, DRAFT, DISCARDED, SENT_MANUALLY, FAILED]
 
     EmailDraft:
       type: object
@@ -1415,10 +1451,14 @@ components:
         organizationId: { type: string, format: uuid }
         leadId: { type: string, format: uuid, nullable: true }
         contactId: { type: string, format: uuid, nullable: true }
-        subject: { type: string }
-        body: { type: string }
+        subject: { type: string, nullable: true }
+        body: { type: string, nullable: true }
         tone: { type: string, nullable: true }
         status: { $ref: "#/components/schemas/EmailDraftStatus" }
+        errorMessage:
+          type: string
+          nullable: true
+          description: Safe, user-facing text only when status is FAILED (FR-041, NFR-039) — never a raw provider error.
         createdAt: { type: string, format: date-time }
 
     Contact:

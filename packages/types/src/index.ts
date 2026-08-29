@@ -323,6 +323,53 @@ export interface DashboardMetrics {
   conversionRate: number;
 }
 
+// M6 — AI Integration (FR-036–FR-041, FR-051 🔎)
+export type AIAnalysisType = 'SCORE' | 'QUALIFICATION' | 'SUMMARY';
+export type AIAnalysisStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+
+export interface AIAnalysis {
+  id: string;
+  organizationId: string;
+  leadId: string;
+  type: AIAnalysisType;
+  status: AIAnalysisStatus;
+  score: number | null;
+  classification: string | null;
+  reasons: string[] | null;
+  recommendedAction: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface RequestAiAnalysisRequest {
+  type: AIAnalysisType;
+}
+
+export type EmailDraftStatus = 'PENDING' | 'DRAFT' | 'DISCARDED' | 'SENT_MANUALLY' | 'FAILED';
+
+export interface EmailDraft {
+  id: string;
+  organizationId: string;
+  leadId: string | null;
+  contactId: string | null;
+  subject: string | null;
+  body: string | null;
+  tone: string | null;
+  status: EmailDraftStatus;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface CreateEmailDraftRequest {
+  tone?: string;
+}
+
+export interface UpdateEmailDraftRequest {
+  subject?: string;
+  body?: string;
+  status?: EmailDraftStatus;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

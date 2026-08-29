@@ -7,13 +7,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ApiRequestError, deleteLead, getLead, updateLead } from '../../../lib/api';
 import { readSession, type Session } from '../../../lib/session';
 import { ActivityTimeline } from '../../../components/activity-timeline';
+import { AiPanel } from '../../../components/ai-panel';
 import { TaskList } from '../../../components/task-list';
 
 const STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'UNQUALIFIED', 'CONVERTED', 'LOST'];
 
-// FR-014, FR-015, FR-016, FR-030–FR-032 · docs/ui-ux/README.md §5.3
-// "/leads/:id" wireframe (DETAILS + ACTIVITY TIMELINE + TASKS — the AI panel
-// lands with M6, not built ahead of the milestone that implements it).
+// FR-014, FR-015, FR-016, FR-030–FR-032, FR-036–FR-040, FR-051 🔎 ·
+// docs/ui-ux/README.md §5.3 "/leads/:id" wireframe (DETAILS + AI ANALYSIS +
+// ACTIVITY TIMELINE + TASKS).
 export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
   const router = useRouter();
@@ -193,6 +194,7 @@ export default function LeadDetailPage() {
 
       {session && (
         <div className="flex flex-col gap-6 border-t border-neutral-200 pt-6">
+          <AiPanel session={session} leadId={lead.id} canUse={canWrite} />
           <ActivityTimeline session={session} relation={{ leadId: lead.id }} canLog={canWrite} />
           <TaskList session={session} relation={{ leadId: lead.id }} canCreate={canWrite} />
         </div>

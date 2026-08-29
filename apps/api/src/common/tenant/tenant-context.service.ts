@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { OrgRole, Prisma } from '@prisma/client';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { PrismaService } from '../prisma/prisma.service';
 
 export interface TenantStore {
   organizationId: string;
@@ -25,6 +26,25 @@ export class TenantContextService {
 
   run<T>(store: TenantStore, fn: () => T): T {
     return this.storage.run(store, fn);
+  }
+
+  // M6: the same "wrap in a real transaction + set_config() + run()" pattern
+  // TenantScopeInterceptor uses for an HTTP request, but for code with no
+  // request to intercept — a BullMQ job processor. A worker has no
+  // TenantScopeInterceptor in its call path, so without this it would either
+  // use the plain PrismaService (RLS sees no app.current_organization_id,
+  // silently returns nothing) or need every processor to hand-roll the same
+  // set_config() dance. See docs/database/README.md §5.6 for why that dance
+  // matters at all.
+  async runInNewTenantTransaction<T>(
+    prisma: PrismaService,
+    store: Omit<TenantStore, 'tx'>,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_organization_id', ${store.organizationId}, true)`;
+      return this.run({ ...store, tx }, fn);
+    });
   }
 
   private getStoreOrThrow(): TenantStore {

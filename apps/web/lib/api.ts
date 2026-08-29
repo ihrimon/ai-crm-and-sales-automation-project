@@ -1,6 +1,7 @@
 import type {
   Activity,
   ActivityList,
+  AIAnalysis,
   ApiError,
   AuthTokens,
   Company,
@@ -11,6 +12,7 @@ import type {
   CreateCompanyRequest,
   CreateContactRequest,
   CreateDealRequest,
+  CreateEmailDraftRequest,
   CreateLeadRequest,
   CreateOrganizationRequest,
   CreatePipelineStageRequest,
@@ -18,6 +20,7 @@ import type {
   DashboardMetrics,
   Deal,
   DealList,
+  EmailDraft,
   InviteMemberRequest,
   Lead,
   LeadList,
@@ -31,12 +34,14 @@ import type {
   PipelineMetrics,
   PipelineStage,
   RegisterRequest,
+  RequestAiAnalysisRequest,
   Task,
   TaskList,
   TaskStatus,
   UpdateCompanyRequest,
   UpdateContactRequest,
   UpdateDealRequest,
+  UpdateEmailDraftRequest,
   UpdateLeadRequest,
   UpdatePipelineStageRequest,
   UpdateTaskRequest,
@@ -449,4 +454,90 @@ export async function getDashboardMetrics(accessToken: string): Promise<Dashboar
   const res = await authorizedFetch('/dashboard/metrics', accessToken);
   if (!res.ok) return parseErrorAndThrow(res);
   return res.json();
+}
+
+// M6 — AI (FR-036–FR-041, FR-051 🔎). Both request*() calls return 202 with
+// just an id (architecture/README.md §6.2) — pollAiAnalysis/pollEmailDraft
+// below do the "poll until COMPLETED/FAILED" part.
+export async function requestAiAnalysis(
+  accessToken: string,
+  leadId: string,
+  payload: RequestAiAnalysisRequest,
+): Promise<{ analysisId: string }> {
+  const res = await authorizedFetch(`/leads/${leadId}/ai-analyses`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function getAiAnalysis(accessToken: string, leadId: string, analysisId: string): Promise<AIAnalysis> {
+  const res = await authorizedFetch(`/leads/${leadId}/ai-analyses/${analysisId}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+// Polls GET .../ai-analyses/:id every intervalMs until status leaves PENDING
+// or maxAttempts is hit (returns the last-seen PENDING result in that case —
+// the caller can decide how to present "still processing").
+export async function pollAiAnalysis(
+  accessToken: string,
+  leadId: string,
+  analysisId: string,
+  intervalMs = 1500,
+  maxAttempts = 20,
+): Promise<AIAnalysis> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const analysis = await getAiAnalysis(accessToken, leadId, analysisId);
+    if (analysis.status !== 'PENDING') return analysis;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return getAiAnalysis(accessToken, leadId, analysisId);
+}
+
+export async function requestEmailDraft(
+  accessToken: string,
+  leadId: string,
+  payload: CreateEmailDraftRequest,
+): Promise<{ emailDraftId: string }> {
+  const res = await authorizedFetch(`/leads/${leadId}/email-drafts`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function getEmailDraft(accessToken: string, emailDraftId: string): Promise<EmailDraft> {
+  const res = await authorizedFetch(`/email-drafts/${emailDraftId}`, accessToken);
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function updateEmailDraft(
+  accessToken: string,
+  emailDraftId: string,
+  payload: UpdateEmailDraftRequest,
+): Promise<EmailDraft> {
+  const res = await authorizedFetch(`/email-drafts/${emailDraftId}`, accessToken, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return parseErrorAndThrow(res);
+  return res.json();
+}
+
+export async function pollEmailDraft(
+  accessToken: string,
+  emailDraftId: string,
+  intervalMs = 1500,
+  maxAttempts = 20,
+): Promise<EmailDraft> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const draft = await getEmailDraft(accessToken, emailDraftId);
+    if (draft.status !== 'PENDING') return draft;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return getEmailDraft(accessToken, emailDraftId);
 }

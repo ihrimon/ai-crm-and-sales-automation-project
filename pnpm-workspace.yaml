@@ -8,3 +8,4 @@ onlyBuiltDependencies:
   - "@prisma/engines"
   - "prisma"
   - "unrs-resolver"
+  - "msgpackr-extract"
