@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
-import { AIAnalysisStatus, AIAnalysisType, EmailDraftStatus } from '@prisma/client';
+import { AIAnalysisStatus, AIAnalysisType, EmailDraftStatus, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AI_JOB_MAX_ATTEMPTS, AI_QUEUE_NAME, ANALYZE_LEAD_JOB, GENERATE_EMAIL_JOB } from '../common/queue/queue.module';
@@ -47,59 +47,67 @@ export class AiProcessor extends WorkerHost {
         if (type === AIAnalysisType.SUMMARY) {
           const conversationText = context.recentActivity.join('\n');
           const summary = await this.provider.summarize(conversationText);
-          await this.tenantContext.tx.aIAnalysis.update({
-            where: { id: analysisId },
-            data: {
-              status: AIAnalysisStatus.COMPLETED,
-              classification: null,
-              score: null,
-              // Structured Intent/Pain Points/Action Items/Next Follow-up
-              // (guideline/04-ai-features.md §9.4 🔎) mapped onto the
-              // contract's flat `reasons: string[]` — AIAnalysis has no
-              // dedicated summary-shape fields (docs/api/openapi.yaml).
-              reasons: [
-                `Intent: ${summary.intent}`,
-                ...summary.painPoints.map((p) => `Pain Point: ${p}`),
-                ...summary.actionItems.map((a) => `Action Item: ${a}`),
-                `Next Follow-up: ${summary.nextFollowUp}`,
-              ],
-              recommendedAction: summary.nextFollowUp,
-              rawOutput: summary as object,
-            },
-          });
+          await this.updateWithRetryOnMissingRow(() =>
+            this.tenantContext.tx.aIAnalysis.update({
+              where: { id: analysisId },
+              data: {
+                status: AIAnalysisStatus.COMPLETED,
+                classification: null,
+                score: null,
+                // Structured Intent/Pain Points/Action Items/Next Follow-up
+                // (guideline/04-ai-features.md §9.4 🔎) mapped onto the
+                // contract's flat `reasons: string[]` — AIAnalysis has no
+                // dedicated summary-shape fields (docs/api/openapi.yaml).
+                reasons: [
+                  `Intent: ${summary.intent}`,
+                  ...summary.painPoints.map((p) => `Pain Point: ${p}`),
+                  ...summary.actionItems.map((a) => `Action Item: ${a}`),
+                  `Next Follow-up: ${summary.nextFollowUp}`,
+                ],
+                recommendedAction: summary.nextFollowUp,
+                rawOutput: summary as object,
+              },
+            }),
+          );
         } else if (type === AIAnalysisType.QUALIFICATION) {
           const result = await this.provider.qualify(context);
-          await this.tenantContext.tx.aIAnalysis.update({
-            where: { id: analysisId },
-            data: {
-              status: AIAnalysisStatus.COMPLETED,
-              classification: result.classification,
-              reasons: result.reasons,
-              rawOutput: result as object,
-            },
-          });
+          await this.updateWithRetryOnMissingRow(() =>
+            this.tenantContext.tx.aIAnalysis.update({
+              where: { id: analysisId },
+              data: {
+                status: AIAnalysisStatus.COMPLETED,
+                classification: result.classification,
+                reasons: result.reasons,
+                rawOutput: result as object,
+              },
+            }),
+          );
         } else {
           const result = await this.provider.score(context);
-          await this.tenantContext.tx.aIAnalysis.update({
-            where: { id: analysisId },
-            data: {
-              status: AIAnalysisStatus.COMPLETED,
-              score: result.score,
-              classification: result.classification,
-              reasons: result.reasons,
-              recommendedAction: result.recommendedAction,
-              rawOutput: result as object,
-            },
-          });
+          await this.updateWithRetryOnMissingRow(() =>
+            this.tenantContext.tx.aIAnalysis.update({
+              where: { id: analysisId },
+              data: {
+                status: AIAnalysisStatus.COMPLETED,
+                score: result.score,
+                classification: result.classification,
+                reasons: result.reasons,
+                recommendedAction: result.recommendedAction,
+                rawOutput: result as object,
+              },
+            }),
+          );
         }
       });
     } catch (err) {
       await this.handleFailure(job, err, async (message) => {
         await this.tenantContext.runInNewTenantTransaction(this.prisma, { organizationId, userId, role, memberId }, () =>
-          this.tenantContext.tx.aIAnalysis.update({
-            where: { id: analysisId },
-            data: { status: AIAnalysisStatus.FAILED, errorMessage: message },
-          }),
+          this.updateWithRetryOnMissingRow(() =>
+            this.tenantContext.tx.aIAnalysis.update({
+              where: { id: analysisId },
+              data: { status: AIAnalysisStatus.FAILED, errorMessage: message },
+            }),
+          ),
         );
       });
     }
@@ -120,18 +128,22 @@ export class AiProcessor extends WorkerHost {
           jobTitle: lead.jobTitle,
           tone,
         });
-        await this.tenantContext.tx.emailDraft.update({
-          where: { id: emailDraftId },
-          data: { status: EmailDraftStatus.DRAFT, subject: result.subject, body: result.body },
-        });
+        await this.updateWithRetryOnMissingRow(() =>
+          this.tenantContext.tx.emailDraft.update({
+            where: { id: emailDraftId },
+            data: { status: EmailDraftStatus.DRAFT, subject: result.subject, body: result.body },
+          }),
+        );
       });
     } catch (err) {
       await this.handleFailure(job, err, async (message) => {
         await this.tenantContext.runInNewTenantTransaction(this.prisma, { organizationId, userId, role, memberId }, () =>
-          this.tenantContext.tx.emailDraft.update({
-            where: { id: emailDraftId },
-            data: { status: EmailDraftStatus.FAILED, errorMessage: message },
-          }),
+          this.updateWithRetryOnMissingRow(() =>
+            this.tenantContext.tx.emailDraft.update({
+              where: { id: emailDraftId },
+              data: { status: EmailDraftStatus.FAILED, errorMessage: message },
+            }),
+          ),
         );
       });
     }
@@ -167,6 +179,33 @@ export class AiProcessor extends WorkerHost {
     // detail server-side only, never expose it to the client.
     this.logger.error(`Unexpected error processing AI job ${job.id}`, err instanceof Error ? err.stack : String(err));
     await markFailed('Something went wrong while processing this request.');
+  }
+
+  // A real race, found by Phase 15's cross-feature E2E pass, not by any of
+  // the 259 Jest unit/integration tests: EmailDraftService/AiAnalysisService
+  // create their row AND enqueue this job in the *same* request-scoped
+  // Prisma transaction (TenantScopeInterceptor wraps the whole request) —
+  // but that transaction only COMMITs after the HTTP handler returns, while
+  // BullMQ's Redis dispatch can hand the job to this in-process worker
+  // before that commit lands. This worker's own (separate) transaction then
+  // can't see the row yet: Prisma throws P2025 ("Record to update not
+  // found"). Jest's test harness happened to always be slow enough for the
+  // commit to land first; a real dev server serving both the request and
+  // the worker in one fast event loop is not. Retrying the update a few
+  // times with a short backoff bridges that gap without restructuring the
+  // transaction architecture (a full transactional-outbox rewrite isn't
+  // warranted for a multi-hundred-millisecond race window).
+  private async updateWithRetryOnMissingRow<T>(fn: () => Promise<T>): Promise<T> {
+    const backoffMs = [50, 150, 400, 800];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const isMissingRow = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
+        if (!isMissingRow || attempt >= backoffMs.length) throw err;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
+      }
+    }
   }
 
   private async buildLeadContext(leadId: string): Promise<LeadContext> {

@@ -1,0 +1,23 @@
+{
+  "name": "@ai-crm/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"tests/**/*.ts\"",
+    "build": "echo \"@ai-crm/e2e: nothing to build\""
+  },
+  "dependencies": {
+    "@ai-crm/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@types/node": "^20.17.9",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,4 +1,4 @@
-import { AIAnalysisStatus, AIAnalysisType, EmailDraftStatus, OrgRole } from '@prisma/client';
+import { AIAnalysisStatus, AIAnalysisType, EmailDraftStatus, OrgRole, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 import { AI_JOB_MAX_ATTEMPTS } from '../common/queue/queue.module';
 import { AiProcessor } from './ai.processor';
@@ -48,6 +48,10 @@ const EMAIL_JOB_DATA: GenerateEmailJobData = {
 
 function buildJob<T>(name: string, data: T, attemptsMade = 0): Job<T> {
   return { id: 'job-1', name, data, attemptsMade } as unknown as Job<T>;
+}
+
+function buildRecordNotFoundError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Record to update not found.', { code: 'P2025', clientVersion: '5.22.0' });
 }
 
 describe('AiProcessor', () => {
@@ -194,6 +198,36 @@ describe('AiProcessor', () => {
         where: { id: 'draft-1' },
         data: { status: EmailDraftStatus.FAILED, errorMessage: expect.any(String) },
       });
+    });
+  });
+
+  // A real race, found by Phase 15's cross-feature E2E pass, not by any
+  // isolated unit/integration test: EmailDraftService/AiAnalysisService
+  // create their row and enqueue this job inside the *same* request-scoped
+  // Prisma transaction, which only commits after the HTTP handler returns —
+  // but BullMQ can hand the job to this in-process worker before that
+  // commit lands, so the worker's own transaction can't see the row yet
+  // (Prisma P2025, "Record to update not found"). See
+  // docs/development-plan/README.md's Phase 15 section for the full story.
+  describe('retrying a "row not committed yet" race (Phase 15 E2E finding)', () => {
+    it('retries a P2025 on the update and succeeds once the row becomes visible', async () => {
+      provider.generateEmail.mockResolvedValue({ subject: 'Following up', body: 'Hi Jane,' });
+      tx.emailDraft.update.mockRejectedValueOnce(buildRecordNotFoundError()).mockResolvedValueOnce({ id: 'draft-1' });
+
+      await processor.process(buildJob('generate-email', EMAIL_JOB_DATA));
+
+      expect(tx.emailDraft.update).toHaveBeenCalledTimes(2);
+      expect(tx.emailDraft.update).toHaveBeenLastCalledWith({
+        where: { id: 'draft-1' },
+        data: { status: EmailDraftStatus.DRAFT, subject: 'Following up', body: 'Hi Jane,' },
+      });
+    });
+
+    it('gives up and rethrows once retries are exhausted if the row never appears at all', async () => {
+      provider.generateEmail.mockResolvedValue({ subject: 'Following up', body: 'Hi Jane,' });
+      tx.emailDraft.update.mockRejectedValue(buildRecordNotFoundError());
+
+      await expect(processor.process(buildJob('generate-email', EMAIL_JOB_DATA))).rejects.toThrow('Record to update not found');
     });
   });
 });

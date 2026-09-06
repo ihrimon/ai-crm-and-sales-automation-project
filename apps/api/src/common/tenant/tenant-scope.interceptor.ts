@@ -58,12 +58,27 @@ export class TenantScopeInterceptor implements NestInterceptor {
     const memberId = user.memberId;
 
     return from(
-      this.prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT set_config('app.current_organization_id', ${organizationId}, true)`;
-        return this.tenantContext.run({ organizationId, userId, role, memberId, tx }, () =>
-          firstValueFrom(next.handle()),
-        );
-      }),
+      this.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.current_organization_id', ${organizationId}, true)`;
+          return this.tenantContext.run({ organizationId, userId, role, memberId, tx }, () =>
+            firstValueFrom(next.handle()),
+          );
+        },
+        // Prisma's interactive-transaction default (5000ms) assumes a
+        // simple CRUD body. This transaction wraps the *entire* request
+        // handler, which for LeadService.create()/DealService.update()
+        // etc. can also run AutomationTriggerService synchronously (M7) —
+        // real work, not just one query. Phase 15's E2E pass hit the
+        // default under real concurrent load (several bcrypt hashes from
+        // simultaneous registrations competing for the same single-
+        // threaded event loop): the transaction body itself was fast, but
+        // wall-clock time crossed 5s before it got there, so Postgres
+        // closed the transaction out from under the still-running request
+        // ("Transaction already closed: expired"). 15s gives real margin
+        // without masking a genuinely hung query.
+        { timeout: 15_000 },
+      ),
     );
   }
 }
