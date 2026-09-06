@@ -1,6 +1,7 @@
 'use client';
 
 import type { AIAnalysis, AIAnalysisType, EmailDraft } from '@ai-crm/types';
+import { Loader2, Mail, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import {
   ApiRequestError,
@@ -11,6 +12,12 @@ import {
   updateEmailDraft,
 } from '../lib/api';
 import type { Session } from '../lib/session';
+import { Alert, AlertDescription } from './ui/alert';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
+import { Input } from './ui/input';
+import { Separator } from './ui/separator';
 
 // FR-036–FR-040, FR-051 🔎 · docs/ui-ux/README.md §5.3 "AI ANALYSIS" panel.
 // Async 202-then-poll flow (architecture/README.md §6.2): each button
@@ -77,106 +84,103 @@ export function AiPanel({ session, leadId, canUse }: { session: Session; leadId:
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">AI Analysis</h2>
-
+    <div className="flex flex-col gap-4">
       {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {analysis && analysis.status === 'COMPLETED' && (
-        <div className="flex flex-col gap-1 rounded border border-neutral-200 p-3 text-sm">
-          {analysis.score !== null && <p>Score: {analysis.score}</p>}
-          {analysis.classification && <p>Classification: {analysis.classification}</p>}
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
+          <div className="flex items-center gap-2">
+            {analysis.score !== null && <Badge>{analysis.score} / 100</Badge>}
+            {analysis.classification && <Badge variant="outline">{analysis.classification}</Badge>}
+          </div>
           {analysis.reasons && analysis.reasons.length > 0 && (
-            <ul className="list-inside list-disc text-neutral-600">
+            <ul className="list-inside list-disc text-muted-foreground">
               {analysis.reasons.map((reason, i) => (
                 <li key={i}>{reason}</li>
               ))}
             </ul>
           )}
-          {analysis.recommendedAction && <p className="mt-1 font-medium">Recommended Action: {analysis.recommendedAction}</p>}
+          {analysis.recommendedAction && (
+            <>
+              <Separator />
+              <p>
+                <span className="font-medium">Recommended:</span> {analysis.recommendedAction}
+              </p>
+            </>
+          )}
         </div>
       )}
-      {analysis && analysis.status === 'PENDING' && <p className="text-sm text-neutral-500">Still processing…</p>}
+      {analysis && analysis.status === 'PENDING' && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Still processing…
+        </p>
+      )}
 
       {canUse && (
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={pending !== null}
-            onClick={() => runAnalysis('SCORE')}
-            className="rounded border border-neutral-300 px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {pending === 'SCORE' ? 'Scoring…' : 'Score with AI'}
-          </button>
-          <button
-            type="button"
-            disabled={pending !== null}
-            onClick={() => runAnalysis('QUALIFICATION')}
-            className="rounded border border-neutral-300 px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {pending === 'QUALIFICATION' ? 'Qualifying…' : 'Qualify with AI'}
-          </button>
-          <button
-            type="button"
-            disabled={pending !== null}
-            onClick={() => runAnalysis('SUMMARY')}
-            className="rounded border border-neutral-300 px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {pending === 'SUMMARY' ? 'Summarizing…' : 'Summarize Activity'}
-          </button>
+          <Button type="button" variant="outline" size="sm" disabled={pending !== null} onClick={() => runAnalysis('SCORE')}>
+            {pending === 'SCORE' && <Loader2 className="animate-spin" />}
+            Score with AI
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={pending !== null} onClick={() => runAnalysis('QUALIFICATION')}>
+            {pending === 'QUALIFICATION' && <Loader2 className="animate-spin" />}
+            Qualify with AI
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={pending !== null} onClick={() => runAnalysis('SUMMARY')}>
+            {pending === 'SUMMARY' && <Loader2 className="animate-spin" />}
+            Summarize activity
+          </Button>
         </div>
       )}
 
       {canUse && (
-        <button
-          type="button"
-          disabled={pending !== null}
-          onClick={generateEmail}
-          className="self-start rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {pending === 'EMAIL' ? 'Generating…' : 'Generate Follow-up Email'}
-        </button>
+        <Button type="button" size="sm" className="self-start" disabled={pending !== null} onClick={generateEmail}>
+          {pending === 'EMAIL' ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          Generate follow-up email
+        </Button>
       )}
 
       {emailDraft && emailDraft.status !== 'PENDING' && (
-        <div className="flex flex-col gap-2 rounded border border-neutral-200 p-3 text-sm">
+        <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
           {emailDraft.status === 'FAILED' ? (
-            <p className="text-red-600">{emailDraft.errorMessage}</p>
+            <p className="flex items-center gap-2 text-destructive">
+              <Mail className="size-4" /> {emailDraft.errorMessage}
+            </p>
           ) : (
             <>
-              <input
-                type="text"
+              <Input
                 value={emailDraft.subject ?? ''}
                 disabled={emailDraft.status !== 'DRAFT'}
                 onChange={(e) => setEmailDraft({ ...emailDraft, subject: e.target.value })}
-                className="rounded border border-neutral-300 px-2 py-1 font-medium disabled:bg-neutral-100"
+                className="font-medium"
               />
-              <textarea
+              <Textarea
                 value={emailDraft.body ?? ''}
                 disabled={emailDraft.status !== 'DRAFT'}
                 onChange={(e) => setEmailDraft({ ...emailDraft, body: e.target.value })}
                 rows={6}
-                className="rounded border border-neutral-300 px-2 py-1 disabled:bg-neutral-100"
               />
-              <p className="text-xs uppercase tracking-wide text-neutral-500">Status: {emailDraft.status}</p>
+              <Badge variant="outline" className="w-fit uppercase tracking-wide">
+                {emailDraft.status.replaceAll('_', ' ')}
+              </Badge>
               {emailDraft.status === 'DRAFT' && (
                 <div className="flex gap-2">
-                  <button type="button" onClick={markSentManually} className="rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white">
-                    Mark as Sent
-                  </button>
-                  <button type="button" onClick={discardDraft} className="rounded border border-neutral-300 px-3 py-2 text-sm">
+                  <Button type="button" size="sm" onClick={markSentManually}>
+                    Mark as sent
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={discardDraft}>
                     Discard
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }

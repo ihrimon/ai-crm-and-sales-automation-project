@@ -2,8 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
+import { Sparkles } from 'lucide-react';
 import { ApiRequestError, createOrganization, refresh } from '../../lib/api';
 import { readSession, saveSession } from '../../lib/session';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 function slugify(name: string): string {
   return name
@@ -31,7 +37,7 @@ export default function OnboardingPage() {
     if (!session) {
       router.replace('/login');
     } else if (session.organizationId) {
-      router.replace('/');
+      router.replace('/dashboard');
     }
   }, [router]);
 
@@ -57,7 +63,7 @@ export default function OnboardingPage() {
       await createOrganization(session.accessToken, { name, slug });
       const newTokens = await refresh(session.refreshToken);
       saveSession(newTokens);
-      router.push('/');
+      router.push('/dashboard');
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : 'Something went wrong. Please try again.');
     } finally {
@@ -66,61 +72,52 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="w-full max-w-sm">
-        <h1 className="mb-2 text-center text-2xl font-semibold">Create your organization</h1>
-        <p className="mb-6 text-center text-sm text-neutral-500">You&apos;ll be its owner.</p>
-
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="name" className="text-sm font-medium">
-              Organization name
-            </label>
-            <input
-              id="name"
-              name="name"
-              type="text"
-              required
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className="rounded border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label htmlFor="slug" className="text-sm font-medium">
-              Slug
-            </label>
-            <input
-              id="slug"
-              name="slug"
-              type="text"
-              required
-              pattern="[a-z0-9]+(-[a-z0-9]+)*"
-              value={slug}
-              onChange={(e) => {
-                setSlugEditedByUser(true);
-                setSlug(e.target.value);
-              }}
-              className="rounded border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-            />
-          </div>
-
-          {error && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="mt-2 rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {isSubmitting ? 'Creating…' : 'Create organization'}
-          </button>
-        </form>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-muted/30 p-8">
+      <div className="mb-6 flex items-center gap-2">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <Sparkles className="size-4" />
+        </div>
+        <span className="text-lg font-semibold">AI CRM</span>
       </div>
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">Create your organization</CardTitle>
+          <CardDescription>You&apos;ll be its owner.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="name">Organization name</Label>
+              <Input id="name" name="name" required value={name} onChange={(e) => handleNameChange(e.target.value)} autoFocus />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="slug">Slug</Label>
+              <Input
+                id="slug"
+                name="slug"
+                required
+                pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                value={slug}
+                onChange={(e) => {
+                  setSlugEditedByUser(true);
+                  setSlug(e.target.value);
+                }}
+              />
+            </div>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <Button type="submit" disabled={isSubmitting} className="mt-2">
+              {isSubmitting ? 'Creating…' : 'Create organization'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </main>
   );
 }

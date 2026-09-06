@@ -1,11 +1,28 @@
 'use client';
 
 import type { Activity, ActivityType } from '@ai-crm/types';
+import { Phone, Mail, Users as UsersIcon, StickyNote, ArrowRightLeft, MoreHorizontal, Plus } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiRequestError, createActivity, listActivities } from '../lib/api';
+import { generateMockActivities } from '../lib/mock-data';
+import { formatDateTime } from '../lib/status';
 import type { Session } from '../lib/session';
+import { Alert, AlertDescription } from './ui/alert';
+import { Button } from './ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Input } from './ui/input';
+import { Skeleton } from './ui/skeleton';
 
 const ACTIVITY_TYPES: ActivityType[] = ['CALL', 'EMAIL', 'MEETING', 'NOTE', 'STAGE_CHANGE', 'OTHER'];
+
+const ACTIVITY_ICON: Record<ActivityType, React.ComponentType<{ className?: string }>> = {
+  CALL: Phone,
+  EMAIL: Mail,
+  MEETING: UsersIcon,
+  NOTE: StickyNote,
+  STAGE_CHANGE: ArrowRightLeft,
+  OTHER: MoreHorizontal,
+};
 
 type Relation = { leadId: string } | { contactId: string } | { companyId: string } | { dealId: string };
 
@@ -13,20 +30,26 @@ type Relation = { leadId: string } | { contactId: string } | { companyId: string
 // Lead Detail and Deal Detail (both embed it against their own record).
 export function ActivityTimeline({ session, relation, canLog }: { session: Session; relation: Relation; canLog: boolean }) {
   const [activities, setActivities] = useState<Activity[] | null>(null);
+  const [isSample, setIsSample] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState<ActivityType>('NOTE');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Depend on the relation's id value, not the object reference — a fresh
-  // `{ leadId: lead.id }` literal on every parent render would otherwise
-  // re-fetch on every keystroke in the parent's edit form.
   const relationId = Object.values(relation)[0];
 
   useEffect(() => {
     listActivities(session.accessToken, { ...relation, pageSize: 50 })
-      .then((res) => setActivities(res.data))
+      .then((res) => {
+        if (res.data.length === 0) {
+          setActivities(generateMockActivities(4));
+          setIsSample(true);
+        } else {
+          setActivities(res.data);
+          setIsSample(false);
+        }
+      })
       .catch((err) => setError(err instanceof ApiRequestError ? err.message : 'Could not load activities.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.accessToken, relationId]);
@@ -37,7 +60,8 @@ export function ActivityTimeline({ session, relation, canLog }: { session: Sessi
     setError(null);
     try {
       const created = await createActivity(session.accessToken, { type, notes: notes || undefined, ...relation });
-      setActivities((prev) => [created, ...(prev ?? [])]);
+      setActivities((prev) => [created, ...(isSample ? [] : (prev ?? []))]);
+      setIsSample(false);
       setNotes('');
       setShowForm(false);
     } catch (err) {
@@ -48,68 +72,77 @@ export function ActivityTimeline({ session, relation, canLog }: { session: Sessi
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Activity Timeline</h2>
-
+    <div className="flex flex-col gap-3">
       {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {activities === null ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
       ) : activities.length === 0 ? (
-        <p className="text-sm text-neutral-500">No activity logged yet.</p>
+        <p className="text-sm text-muted-foreground">No activity logged yet.</p>
       ) : (
-        <ul className="flex flex-col gap-2 text-sm">
-          {activities.map((activity) => (
-            <li key={activity.id} className="flex items-baseline gap-2">
-              <span aria-hidden>●</span>
-              <span className="font-medium">{activity.type}</span>
-              {activity.notes && <span className="text-neutral-500">— {activity.notes}</span>}
-              <span className="ml-auto text-neutral-400">{new Date(activity.occurredAt).toLocaleString()}</span>
-            </li>
-          ))}
+        <ul className="flex flex-col gap-4">
+          {activities.map((activity) => {
+            const Icon = ACTIVITY_ICON[activity.type];
+            return (
+              <li key={activity.id} className="flex gap-3">
+                <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border bg-muted">
+                  <Icon className="size-3.5 text-muted-foreground" />
+                </div>
+                <div className="flex flex-1 flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{activity.type.replaceAll('_', ' ')}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(activity.occurredAt)}</span>
+                  </div>
+                  {activity.notes && <p className="text-sm text-muted-foreground">{activity.notes}</p>}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 
       {canLog && (
         <>
-          <button type="button" onClick={() => setShowForm((v) => !v)} className="self-start text-sm underline">
-            + Log Activity
-          </button>
+          {!showForm && (
+            <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setShowForm(true)}>
+              <Plus />
+              Log activity
+            </Button>
+          )}
           {showForm && (
-            <form onSubmit={handleLog} className="flex flex-col gap-2 rounded border border-neutral-200 p-3">
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as ActivityType)}
-                className="rounded border border-neutral-300 px-2 py-2 text-sm"
-              >
-                {ACTIVITY_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                placeholder="Notes (optional)"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="rounded border border-neutral-300 px-3 py-2 text-sm"
-              />
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="self-start rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {isSaving ? 'Saving…' : 'Save'}
-              </button>
+            <form onSubmit={handleLog} className="flex flex-col gap-2 rounded-lg border p-3">
+              <Select value={type} onValueChange={(v) => setType(v as ActivityType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTIVITY_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.replaceAll('_', ' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={isSaving}>
+                  {isSaving ? 'Saving…' : 'Save'}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setShowForm(false)}>
+                  Cancel
+                </Button>
+              </div>
             </form>
           )}
         </>
       )}
-    </section>
+    </div>
   );
 }
