@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ActivityModule } from './activity/activity.module';
 import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
@@ -39,6 +40,29 @@ import { TaskModule } from './task/task.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Phase 16 (Security Review) — NFR-011 ("sensitive and resource-intensive
+    // endpoints should use appropriate rate limiting") was never implemented
+    // through M0-M8. A single global default is deliberately coarse (per-IP,
+    // every route) rather than per-endpoint tuning that no FR has specified
+    // yet — tighten per-route with @Throttle()/@SkipThrottle() if a real
+    // abuse pattern shows up. Values are env-configurable, not hardcoded,
+    // since the right limit depends on the deployment (see .env.example).
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        // Same NODE_ENV=test guard this codebase already uses for
+        // AutomationNoResponseScheduler (M7): Jest's integration suites fire
+        // far more than 100 requests/minute from one process against a
+        // shared test server, which has nothing to do with real abuse.
+        skipIf: () => process.env.NODE_ENV === 'test',
+        throttlers: [
+          {
+            ttl: Number(config.get<string>('RATE_LIMIT_TTL_MS') ?? 60_000),
+            limit: Number(config.get<string>('RATE_LIMIT_LIMIT') ?? 100),
+          },
+        ],
+      }),
+    }),
     PrismaModule,
     TokenModule,
     TenantModule,
@@ -59,6 +83,10 @@ import { TaskModule } from './task/task.module';
     NotificationModule,
   ],
   providers: [
+    // Runs before JwtAuthGuard so it also covers unauthenticated/@Public()
+    // routes (login, register, password-reset) — exactly the endpoints a
+    // credential-stuffing/brute-force attempt targets.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RbacGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantScopeInterceptor },
