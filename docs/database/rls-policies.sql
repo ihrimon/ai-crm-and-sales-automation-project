@@ -1,5 +1,5 @@
 -- Row-Level Security policies — AI CRM & Sales Automation
--- Implements the database-layer half of ADR-004 (docs/decisions/ADR-004-multi-tenancy-rls.md).
+-- Implements the database-layer half of ADR-004 (docs/decisions/README.md).
 --
 -- Pattern: every tenant-scoped table (every table in schema.prisma with an
 -- organizationId column, i.e. everything except User) gets:

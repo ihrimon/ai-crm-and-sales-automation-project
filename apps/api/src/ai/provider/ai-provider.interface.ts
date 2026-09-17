@@ -1,4 +1,4 @@
-// ADR-007 (docs/decisions/ADR-007-ai-provider-adapter.md): the rest of the
+// ADR-007 (docs/decisions/README.md): the rest of the
 // system depends on this interface, never on a provider SDK directly. All
 // prompt construction, response parsing, and output-shape validation happen
 // inside whichever adapter implements it — callers only ever see a

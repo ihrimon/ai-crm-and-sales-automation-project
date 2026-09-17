@@ -19,7 +19,7 @@ export const NO_RESPONSE_SWEEP_JOB = 'no-response-sweep';
 // session, not "every hour" — see AutomationNoResponseProcessor.
 export const NO_RESPONSE_SWEEP_INTERVAL_MS = 60_000;
 
-// ADR-006 (docs/decisions/ADR-006-redis-bullmq.md): Redis-backed BullMQ
+// ADR-006 (docs/decisions/README.md): Redis-backed BullMQ
 // queue for work that must not block the request/response cycle. The worker
 // runs in-process (registered via BullModule.registerQueue, consumed by
 // AiProcessor) rather than as a separate deployable — this repo has no

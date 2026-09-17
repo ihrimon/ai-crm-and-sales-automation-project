@@ -1,4 +1,4 @@
--- Row-Level Security policies — ADR-004 (docs/decisions/ADR-004-multi-tenancy-rls.md).
+-- Row-Level Security policies — ADR-004 (docs/decisions/README.md).
 -- Pattern documented in docs/database/rls-policies.sql: every tenant-scoped
 -- table gets RLS enabled + a policy comparing organizationId to a per-request
 -- session setting, set via SET LOCAL app.current_organization_id by the API

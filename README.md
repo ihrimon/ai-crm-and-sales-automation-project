@@ -5,11 +5,13 @@ An AI-native, automation-first CRM: lead scoring/qualification, follow-up email 
 **Full documentation lives in [`docs/`](docs/README.md).** Start there, not here — this file is just the entry point:
 
 - [docs/tracker.md](docs/tracker.md) — current progress
-- [docs/guideline/](docs/guideline/README.md) — the SDLC process this project follows
 - [docs/srs/](docs/srs/README.md) — the requirements (FR/NFR/use cases/acceptance criteria)
+- [docs/decisions/](docs/decisions/README.md) — why each major technical decision was made (7 ADRs)
 - [docs/architecture/](docs/architecture/README.md), [docs/database/](docs/database/README.md), [docs/api/](docs/api/README.md), [docs/ui-ux/](docs/ui-ux/README.md) — system design
-- [docs/development-plan/](docs/development-plan/README.md) — the milestone breakdown this codebase is being built against
-- [docs/bn/](docs/bn/README.md) — বাংলা ভার্সন
+- [docs/development-plan/](docs/development-plan/README.md) — the milestone breakdown this codebase was built against
+- [docs/testing-plan/](docs/testing-plan/README.md) — the cross-feature E2E testing pass (Phase 15)
+- [SUMMARY.md](SUMMARY.md) — a single-file orientation doc for a new session/reader (start here if you want the whole project in one read)
+- [docs/bn/](docs/bn/README.md) — বাংলা: progress tracker + per-milestone reports + a user guide
 
 ## Structure
 
@@ -40,4 +42,8 @@ Health check once the API is running: `curl http://localhost:34001/health`.
 
 ## Where This Is At
 
-This repository has completed Milestones **M0 (Project Setup)** through **M4 (Deals + Pipeline)** of [docs/development-plan/](docs/development-plan/README.md) — the workspace, database schema, CI skeleton, a working `Auth` module (register/login/logout/refresh/password-reset/email-verify with JWT + refresh-token rotation), a working `Organization` module (create/invite/list/update/remove members) with real Row-Level Security tenant isolation enforced end to end, working `Lead`/`Contact`/`Company` modules (full CRUD, search/filter/sort/paginate, and round-robin lead auto-assignment), and working `Pipeline`/`Deal` modules (configurable pipeline stages, deal CRUD, and stage-move with server-enforced business rules) all exist, with real screens for every one of them, including a Kanban pipeline board. Feature modules beyond these (Activities/Tasks/Dashboard, Automation, AI, ...) aren't implemented yet. See [docs/tracker.md](docs/tracker.md) for the up-to-date status.
+All 9 planned milestones (**M0–M8**) of [docs/development-plan/](docs/development-plan/README.md) are done, plus a cross-feature E2E testing pass (Phase 15): `Auth`, `Organization`/RBAC, `Lead`/`Contact`/`Company` (with round-robin auto-assignment), `Pipeline`/`Deal` (Kanban board), `Activity`/`Task`/`Dashboard`, `Ai` (scoring/qualification/summarization/email drafts, async via BullMQ), `Automation` (trigger→condition→action engine with a human-approval gate on AI-derived actions), and `Audit`/`Notification` are all real, tested modules in `apps/api`, with matching real screens in `apps/web` for every one of them. 261 backend tests (unit + integration, against a real Postgres) and 4 Playwright cross-feature journeys all pass.
+
+The frontend also got a shadcn/ui-based redesign after Phase 15 (a `(dashboard)` route group replacing the original plain-Tailwind screens) — a visual/component pass, not a feature change.
+
+Next up: Phase 16 (Security Review), not yet started. See [docs/tracker.md](docs/tracker.md) for the up-to-date status, or [SUMMARY.md](SUMMARY.md) for a full single-file project orientation.
