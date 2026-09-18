@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 // Phase 15 E2E helpers — see docs/testing-plan/README.md. Runs against the
 // real dev servers (pnpm dev:api / pnpm dev:web), same live local
@@ -56,4 +56,25 @@ export async function loginViaUi(page: Page, email: string, password: string): P
   await page.fill('#password', password);
   await page.click('button[type=submit]');
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 10_000 });
+}
+
+// Since the 2026-09-17 shadcn/ui redesign, every real error banner is
+// components/ui/alert.tsx's <Alert>, which renders `<div role="alert">` (it
+// used to be a plain `<p role="alert">`). Next.js's own client-side router
+// also injects an invisible `#__next-route-announcer__` element carrying
+// `role="alert"` after every navigation — excluding it by id is still
+// required, only the tag changed. See docs/security-review/README.md for
+// the fuller story (found re-running this suite for the first time since
+// the redesign, not caused by it).
+export const ERROR_ALERT_SELECTOR = '[role="alert"]:not(#__next-route-announcer__)';
+
+// Every <select> became a Radix UI Select (components/ui/select.tsx) in the
+// same redesign: a `role="combobox"` trigger button plus a portal-rendered
+// `role="listbox"` of `role="option"` items, not a native <select> — so
+// Playwright's `selectOption()` no longer applies. `trigger` is the
+// SelectTrigger locator (or anything that opens the listbox on click);
+// `optionText` matches the visible option label exactly as rendered.
+export async function selectRadixOption(trigger: Locator, optionText: string | RegExp): Promise<void> {
+  await trigger.click();
+  await trigger.page().getByRole('option', { name: optionText }).click();
 }

@@ -1,10 +1,17 @@
 import { expect, test } from '@playwright/test';
-import { PASSWORD, uniqueEmail } from './helpers';
+import { ERROR_ALERT_SELECTOR, PASSWORD, uniqueEmail } from './helpers';
 
-// AC-001 (Registration), AC-002 (Login), AC-003 (Logout) · guideline/16-
-// operations-and-compliance.md §40's "Login" E2E example. Drives the real
-// /register and /login screens rather than the API directly — this is the
-// one spec where the auth UI itself is the thing under test.
+// AC-001 (Registration), AC-002 (Login), AC-003 (Logout) — the guideline's
+// own named "Login" E2E example. Drives the real /register and /login
+// screens rather than the API directly — this is the one spec where the
+// auth UI itself is the thing under test.
+//
+// Updated 2026-09-18 for the 2026-09-17 shadcn/ui redesign: the homepage
+// (`/`) is no longer the signed-in hub — a persistent sidebar is, and `/`
+// itself now redirects straight to `/dashboard` (or `/onboarding` with no
+// org yet). Logout moved from a visible button into the NavUser dropdown in
+// the sidebar footer, and now navigates to `/login` instead of staying on
+// `/`. See docs/security-review/README.md for the full story.
 test.describe('Authentication', () => {
   test('register, log in, session persists across reload, wrong password is rejected safely', async ({ page }) => {
     const email = uniqueEmail('e2e-auth');
@@ -21,7 +28,8 @@ test.describe('Authentication', () => {
     await page.fill('#password', PASSWORD);
     await page.click('button[type=submit]');
 
-    // No organization yet -> the homepage effect redirects to /onboarding.
+    // No organization yet -> DashboardLayout's own effect bounces /dashboard
+    // straight to /onboarding.
     await page.waitForURL('**/onboarding', { timeout: 10_000 });
     await expect(page.getByText('Create your organization')).toBeVisible();
 
@@ -36,10 +44,7 @@ test.describe('Authentication', () => {
     await page.fill('#email', email);
     await page.fill('#password', 'TotallyWrongPassword!');
     await page.click('button[type=submit]');
-    // NOT getByRole('alert') — Next.js's route announcer also carries
-    // role="alert" after a Link navigation (see mvp-journey.spec.ts); every
-    // real error banner in this app is a `<p role="alert">`.
-    await expect(page.locator('p[role="alert"]')).toBeVisible();
+    await expect(page.locator(ERROR_ALERT_SELECTOR)).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);
   });
 
@@ -56,11 +61,10 @@ test.describe('Authentication', () => {
     await page.click('button[type=submit]');
     await page.waitForURL('**/onboarding');
 
-    // Create an organization so the homepage renders the signed-in view
-    // with a Log out button (docs/ui-ux/README.md's homepage nav).
+    // Create an organization — onboarding pushes straight to /dashboard.
     await page.fill('#name', `E2E Logout Org ${Date.now()}`);
     await page.click('button[type=submit]');
-    await page.waitForURL((url) => url.pathname === '/');
+    await page.waitForURL((url) => url.pathname === '/dashboard');
 
     const refreshToken = await page.evaluate(() => {
       const raw = localStorage.getItem('ai-crm.session');
@@ -68,10 +72,13 @@ test.describe('Authentication', () => {
     });
     expect(refreshToken).toBeTruthy();
 
-    await page.click('button:has-text("Log out")');
-    // Logout clears the session client-side and stays on `/`, which then
-    // re-renders as the signed-out marketing view (Log in / Register links).
-    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+    // Log out lives behind the user-menu dropdown in the sidebar footer
+    // (components/nav-user.tsx) now, not a standalone visible button.
+    await page.click(`button:has-text("${email}")`);
+    await page.click('[role="menuitem"]:has-text("Log out")');
+    // DashboardLayout's handleLogout clears the session then replaces to
+    // /login — it no longer stays on `/` re-rendering as a marketing page.
+    await page.waitForURL((url) => url.pathname === '/login');
 
     // The revoked refresh token must no longer mint new access tokens.
     const refreshAfterLogout = await request.post(`${process.env.E2E_API_URL ?? 'http://localhost:34001/api/v1'}/auth/refresh`, {
