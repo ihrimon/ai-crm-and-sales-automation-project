@@ -35,6 +35,17 @@ export default function DealsPage() {
   const [isCreating, setIsCreating] = useState(false);
 
   const canCreate = session?.role !== 'VIEWER';
+  // Defensive fallback, not just cosmetic: found live (docs/deployment/
+  // README.md §5) that `newStageId` state can still be '' when this dialog
+  // opens even though `stages` itself is populated correctly — reproducible
+  // only after several prior client-side navigations, not on a fresh
+  // mount, which points at Next.js's client Router Cache reusing a stale
+  // component instance rather than mounting fresh (never surfaced on
+  // localhost, where there's no real time for a cache window to matter).
+  // Deriving the effective value at render/submit time instead of trusting
+  // the mount-effect's state update to have landed makes the dialog work
+  // regardless of why that update was missed.
+  const effectiveStageId = newStageId || stages[0]?.id || '';
 
   const stageFor = useCallback((id: string) => stages.find((s) => s.id === id), [stages]);
 
@@ -59,7 +70,17 @@ export default function DealsPage() {
         setTotal(dealsRes.meta.total);
         setIsSample(false);
       }
-      if (!newStageId && stageList[0]) setNewStageId(stageList[0].id);
+      // Functional update, not `if (!newStageId ...)` reading the outer
+      // `newStageId` — this callback is memoized with `[]` deps (see below),
+      // so any closure read of state is permanently frozen to mount time,
+      // not "the current value." A previous version read the frozen '' on
+      // every call, which happened to still work on first load but would
+      // silently stomp a real user selection back to stageList[0] after
+      // every create (load() runs again post-create). The functional form
+      // reads the actual current state at update time regardless.
+      if (stageList[0]) {
+        setNewStageId((prev) => prev || stageList[0].id);
+      }
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : 'Could not load deals.');
     }
@@ -82,7 +103,7 @@ export default function DealsPage() {
       await createDeal(session.accessToken, {
         title: newTitle,
         value: newValue ? Number(newValue) : undefined,
-        pipelineStageId: newStageId,
+        pipelineStageId: effectiveStageId,
       });
       setNewTitle('');
       setNewValue('');
@@ -130,7 +151,7 @@ export default function DealsPage() {
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <Label htmlFor="newStageId">Stage</Label>
-                        <Select value={newStageId} onValueChange={setNewStageId}>
+                        <Select value={effectiveStageId} onValueChange={setNewStageId}>
                           <SelectTrigger id="newStageId">
                             <SelectValue />
                           </SelectTrigger>
@@ -145,7 +166,7 @@ export default function DealsPage() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={isCreating}>
+                      <Button type="submit" disabled={isCreating || !effectiveStageId}>
                         {isCreating ? 'Creating…' : 'Create'}
                       </Button>
                     </DialogFooter>
