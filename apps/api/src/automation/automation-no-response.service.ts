@@ -58,6 +58,23 @@ export class AutomationNoResponseService {
         const leads = await this.tenantContext.tx.lead.findMany({
           where: { status: 'CONTACTED', lastContactedAt: { not: null } },
         });
+        if (leads.length === 0) return;
+
+        // Phase 17 (Performance): this used to be one `findFirst` per
+        // (automation, lead) pair inside the loop below — organizations ×
+        // CONTACTED leads × active NO_RESPONSE automations individual round
+        // trips on every sweep interval, a classic N+1. One batched fetch
+        // of every execution this sweep could possibly re-fire against,
+        // checked in-memory via a Set, replaces all of them with exactly
+        // one query regardless of how many leads/automations match.
+        const existingExecutions = await this.tenantContext.tx.automationExecution.findMany({
+          where: {
+            automationId: { in: automations.map((automation) => automation.id) },
+            leadId: { in: leads.map((lead) => lead.id) },
+          },
+          select: { automationId: true, leadId: true },
+        });
+        const alreadyHandledKeys = new Set(existingExecutions.map((execution) => `${execution.automationId}:${execution.leadId}`));
 
         for (const lead of leads) {
           const daysSinceContact = Math.floor((Date.now() - lead.lastContactedAt!.getTime()) / MS_PER_DAY);
@@ -74,10 +91,7 @@ export class AutomationNoResponseService {
             // Fire at most once per (automation, lead) pair — without this,
             // every sweep interval would re-fire the same automation on the
             // same still-unresponsive lead forever.
-            const alreadyHandled = await this.tenantContext.tx.automationExecution.findFirst({
-              where: { automationId: automation.id, leadId: lead.id },
-            });
-            if (alreadyHandled) continue;
+            if (alreadyHandledKeys.has(`${automation.id}:${lead.id}`)) continue;
 
             await this.actionService.execute(automation, { leadId: lead.id, ownerId: lead.ownerId, fields });
           }

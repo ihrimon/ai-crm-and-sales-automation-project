@@ -4,7 +4,7 @@ function buildTxMock() {
   return {
     automation: { findMany: jest.fn() },
     lead: { findMany: jest.fn() },
-    automationExecution: { findFirst: jest.fn() },
+    automationExecution: { findMany: jest.fn().mockResolvedValue([]) },
   };
 }
 
@@ -45,7 +45,7 @@ describe('AutomationNoResponseService', () => {
     tx.automation.findMany.mockResolvedValue([automation]);
     const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
     tx.lead.findMany.mockResolvedValue([{ id: 'lead-1', ownerId: 'member-1', status: 'CONTACTED', source: 'Webinar', industry: null, lastContactedAt: fourDaysAgo }]);
-    tx.automationExecution.findFirst.mockResolvedValue(null);
+    tx.automationExecution.findMany.mockResolvedValue([]);
 
     await service.sweep();
 
@@ -61,11 +61,38 @@ describe('AutomationNoResponseService', () => {
     tx.automation.findMany.mockResolvedValue([automation]);
     const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
     tx.lead.findMany.mockResolvedValue([{ id: 'lead-1', ownerId: 'member-1', status: 'CONTACTED', source: null, industry: null, lastContactedAt: fourDaysAgo }]);
-    tx.automationExecution.findFirst.mockResolvedValue({ id: 'already-exists' });
+    tx.automationExecution.findMany.mockResolvedValue([{ automationId: 'automation-1', leadId: 'lead-1' }]);
 
     await service.sweep();
 
     expect(actionService.execute).not.toHaveBeenCalled();
+  });
+
+  it('checks (automation, lead) dedup with exactly one batched query, not one per pair (Phase 17 N+1 fix)', async () => {
+    prisma.organization.findMany.mockResolvedValue([{ id: 'org-1' }]);
+    const automations = [
+      { id: 'automation-1', conditionJson: null },
+      { id: 'automation-2', conditionJson: null },
+    ];
+    tx.automation.findMany.mockResolvedValue(automations);
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    tx.lead.findMany.mockResolvedValue([
+      { id: 'lead-1', ownerId: 'member-1', status: 'CONTACTED', source: null, industry: null, lastContactedAt: fourDaysAgo },
+      { id: 'lead-2', ownerId: 'member-1', status: 'CONTACTED', source: null, industry: null, lastContactedAt: fourDaysAgo },
+    ]);
+    tx.automationExecution.findMany.mockResolvedValue([{ automationId: 'automation-1', leadId: 'lead-1' }]);
+
+    await service.sweep();
+
+    // 2 leads x 2 automations = 4 pairs to check, but exactly one query.
+    expect(tx.automationExecution.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.automationExecution.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { automationId: { in: ['automation-1', 'automation-2'] }, leadId: { in: ['lead-1', 'lead-2'] } },
+      }),
+    );
+    // 4 pairs minus the 1 already-handled (automation-1, lead-1) = 3 fires.
+    expect(actionService.execute).toHaveBeenCalledTimes(3);
   });
 
   it('a sweep failure for one organization does not stop the others', async () => {
