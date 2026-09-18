@@ -45,3 +45,6 @@ Thumbs.db
 # negation re-includes only the one at the repo root.
 *.md
 !/README.md
+
+.vercel
+.env*

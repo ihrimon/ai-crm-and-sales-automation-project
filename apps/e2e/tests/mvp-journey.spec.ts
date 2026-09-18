@@ -99,6 +99,12 @@ test.describe('Final MVP journey (AC-028, srs/08-acceptance-criteria.md §15)', 
     // other section (the sidebar covers that instead), so use it directly.
     await page.click('a[href="/deals"]');
     await page.click('button:has-text("New Deal")');
+    // The Stage select's default value is only set once DealsPage's own
+    // listPipelines()/listPipelineStages() calls resolve (deals/page.tsx) —
+    // under real network latency (not localhost) that can still be pending
+    // right after the dialog opens; submitting before it lands sends an
+    // empty pipelineStageId and the API correctly rejects it as not a UUID.
+    await expect(page.locator('#newStageId')).not.toHaveText('', { timeout: 15_000 });
     await page.fill('#newTitle', 'Jane Prospect Deal');
     await page.fill('#newValue', '5000');
     await page.click('button:text-is("Create")');
