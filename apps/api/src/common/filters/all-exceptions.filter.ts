@@ -1,5 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
 // architecture/README.md §7 — a single global exception filter mapping every
@@ -12,7 +12,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
-    const requestId = randomUUID();
+    // Phase 19 (Monitoring): request-logger.middleware.ts stamps every real
+    // HTTP request with an ID before it reaches here — reuse it so the ID a
+    // client sees in this error response is the same one grep-able in the
+    // access log line for that request. Falls back to minting a fresh one
+    // when there's no request context (e.g. a bootstrap test app that
+    // doesn't register the middleware) rather than assuming it's always set.
+    const requestId = host.switchToHttp().getRequest<Request>()?.requestId ?? randomUUID();
 
     const isHttpException = exception instanceof HttpException;
     const status = isHttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
