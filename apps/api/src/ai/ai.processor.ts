@@ -97,6 +97,9 @@ export class AiProcessor extends WorkerHost {
               },
             }),
           );
+          // Lead.score is what the Leads list and Dashboard show — without
+          // this, a completed SCORE analysis never reached those screens.
+          await this.tenantContext.tx.lead.update({ where: { id: leadId }, data: { score: result.score } });
         }
       });
     } catch (err) {

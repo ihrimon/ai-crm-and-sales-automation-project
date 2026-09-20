@@ -1034,6 +1034,14 @@ paths:
                   lostDeals: { type: integer }
                   pipelineValue: { type: number }
                   conversionRate: { type: number }
+                  leadsTrend:
+                    type: array
+                    description: New leads per UTC day over the last 14 days, oldest first, zero-filled
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date }
+                        leads: { type: integer }
 
   # ---------------------------------------------------------------------
   # Automations — FR-042 to FR-045, FR-052 🔎

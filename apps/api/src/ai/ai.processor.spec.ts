@@ -10,7 +10,7 @@ function buildTxMock() {
   return {
     aIAnalysis: { update: jest.fn() },
     emailDraft: { update: jest.fn() },
-    lead: { findUniqueOrThrow: jest.fn() },
+    lead: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
     activity: { findMany: jest.fn() },
   };
 }
@@ -91,6 +91,22 @@ describe('AiProcessor', () => {
         where: { id: 'analysis-1' },
         data: expect.objectContaining({ status: AIAnalysisStatus.COMPLETED, score: 87, classification: 'High' }),
       });
+    });
+
+    it('SCORE: also writes the score onto the Lead itself, so the Leads list/Dashboard can show it', async () => {
+      provider.score.mockResolvedValue({ score: 87, classification: 'High', reasons: ['Enterprise'], recommendedAction: 'Call today' });
+
+      await processor.process(buildJob('analyze-lead', ANALYZE_JOB_DATA));
+
+      expect(tx.lead.update).toHaveBeenCalledWith({ where: { id: 'lead-1' }, data: { score: 87 } });
+    });
+
+    it('QUALIFICATION: does not touch Lead.score', async () => {
+      provider.qualify.mockResolvedValue({ classification: 'High', reasons: ['Decision maker'] });
+
+      await processor.process(buildJob('analyze-lead', { ...ANALYZE_JOB_DATA, type: AIAnalysisType.QUALIFICATION }));
+
+      expect(tx.lead.update).not.toHaveBeenCalled();
     });
 
     it('QUALIFICATION: stores classification + reasons, no score', async () => {

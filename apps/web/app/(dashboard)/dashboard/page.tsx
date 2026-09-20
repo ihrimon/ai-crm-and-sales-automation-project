@@ -2,9 +2,9 @@
 
 import type { DashboardMetrics, Lead } from '@ai-crm/types';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import { ArrowUpRight, Briefcase, DollarSign, Target, TrendingUp, Users } from 'lucide-react';
+import { ArrowUpRight, Briefcase, DollarSign, Target, Users } from 'lucide-react';
 
 import { PageHeader } from '@/components/page-header';
 import { SampleDataBadge } from '@/components/sample-data-badge';
@@ -16,7 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ApiRequestError, getDashboardMetrics, listLeads } from '@/lib/api';
-import { generateMockDashboardMetrics, generateMockLeads, generateMockTrend } from '@/lib/mock-data';
+import { generateMockDashboardMetrics, generateMockLeads } from '@/lib/mock-data';
 import { badgeClassName, badgeVariant, formatCurrency, formatDate, LEAD_STATUS_LABEL, LEAD_STATUS_TONE } from '@/lib/status';
 import { readSession, type Session } from '@/lib/session';
 
@@ -50,8 +50,6 @@ export default function DashboardPage() {
       .catch((err) => setError(err instanceof ApiRequestError ? err.message : 'Could not load dashboard metrics.'));
   }, []);
 
-  const trend = useMemo(() => generateMockTrend(14), []);
-
   if (error) {
     return (
       <Alert variant="destructive">
@@ -70,6 +68,10 @@ export default function DashboardPage() {
     );
   }
 
+  const newLeadsInWindow = metrics.leadsTrend.reduce((sum, point) => sum + point.leads, 0);
+  const qualifiedShare = metrics.totalLeads === 0 ? 0 : Math.round((metrics.qualifiedLeads / metrics.totalLeads) * 100);
+  const closedDeals = metrics.wonDeals + metrics.lostDeals;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -82,28 +84,28 @@ export default function DashboardPage() {
         <StatCard
           label="Total Leads"
           value={metrics.totalLeads.toLocaleString()}
-          delta="+12.4%"
+          hint={`${newLeadsInWindow.toLocaleString()} new in the last 14 days`}
           icon={Users}
           href="/leads"
         />
         <StatCard
           label="Qualified Leads"
           value={metrics.qualifiedLeads.toLocaleString()}
-          delta="+4.1%"
+          hint={`${qualifiedShare}% of all leads`}
           icon={Target}
           href="/leads?status=QUALIFIED"
         />
         <StatCard
           label="Open Deals"
           value={metrics.openDeals.toLocaleString()}
-          delta="+2"
+          hint={`${metrics.wonDeals} won · ${metrics.lostDeals} lost`}
           icon={Briefcase}
           href="/deals"
         />
         <StatCard
           label="Pipeline Value"
           value={formatCurrency(metrics.pipelineValue)}
-          delta="+8.9%"
+          hint={`across ${metrics.openDeals.toLocaleString()} open deals`}
           icon={DollarSign}
           href="/pipeline"
         />
@@ -117,7 +119,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="aspect-auto h-[260px] w-full">
-              <AreaChart data={trend} margin={{ left: 0, right: 12, top: 12 }}>
+              <AreaChart data={metrics.leadsTrend} margin={{ left: 0, right: 12, top: 12 }}>
                 <defs>
                   <linearGradient id="fillLeads" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--color-leads)" stopOpacity={0.8} />
@@ -131,7 +133,7 @@ export default function DashboardPage() {
                   axisLine={false}
                   tickMargin={8}
                   minTickGap={24}
-                  tickFormatter={(value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  tickFormatter={(value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
                 />
                 <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} width={28} />
                 <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
@@ -144,7 +146,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Win rate</CardTitle>
-            <CardDescription>Won vs. lost deals this quarter</CardDescription>
+            <CardDescription>Won and lost deals across your pipeline</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
             <div>
@@ -153,6 +155,7 @@ export default function DashboardPage() {
                 <span className="text-sm font-medium">{metrics.conversionRate}%</span>
               </div>
               <Progress value={metrics.conversionRate} />
+              <p className="mt-2 text-xs text-muted-foreground">Won deals as a share of all leads</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div className="flex items-center gap-2">
@@ -168,10 +171,9 @@ export default function DashboardPage() {
               </div>
               <span className="text-sm font-semibold">{metrics.lostDeals}</span>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <TrendingUp className="size-4" />
-              <span>Trending up compared to last quarter</span>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              {closedDeals === 0 ? 'No closed deals yet' : `${metrics.wonDeals} of ${closedDeals} closed deals were won`}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -237,13 +239,13 @@ export default function DashboardPage() {
 function StatCard({
   label,
   value,
-  delta,
+  hint,
   icon: Icon,
   href,
 }: {
   label: string;
   value: string;
-  delta: string;
+  hint: string;
   icon: React.ComponentType<{ className?: string }>;
   href: string;
 }) {
@@ -256,10 +258,7 @@ function StatCard({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{value}</div>
-          <p className="mt-1 flex items-center gap-1 text-xs text-success">
-            <TrendingUp className="size-3" />
-            {delta} from last month
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
         </CardContent>
       </Card>
     </Link>

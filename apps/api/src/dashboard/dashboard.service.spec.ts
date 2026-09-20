@@ -5,6 +5,7 @@ function buildTxMock() {
     pipelineStage: { findMany: jest.fn() },
     lead: { count: jest.fn() },
     deal: { count: jest.fn(), aggregate: jest.fn() },
+    $queryRaw: jest.fn().mockResolvedValue([]),
   };
 }
 
@@ -28,7 +29,7 @@ describe('DashboardService', () => {
 
     const metrics = await service.getMetrics();
 
-    expect(metrics).toEqual({
+    expect(metrics).toMatchObject({
       totalLeads: 0,
       qualifiedLeads: 0,
       openDeals: 0,
@@ -37,6 +38,34 @@ describe('DashboardService', () => {
       pipelineValue: 0,
       conversionRate: 0,
     });
+    // Still a full 14-day window, every day zero — not an empty array the chart can't render.
+    expect(metrics.leadsTrend).toHaveLength(14);
+    expect(metrics.leadsTrend.every((point) => point.leads === 0)).toBe(true);
+  });
+
+  it('builds leadsTrend as 14 consecutive UTC days ending today, zero-filling days with no new leads', async () => {
+    const service = buildService();
+    tx.pipelineStage.findMany.mockResolvedValue([]);
+    tx.lead.count.mockResolvedValue(0);
+    tx.deal.count.mockResolvedValue(0);
+    tx.deal.aggregate.mockResolvedValue({ _sum: { value: null } });
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
+    tx.$queryRaw.mockResolvedValue([
+      { day: today, count: 5 },
+      { day: threeDaysAgo, count: 2 },
+    ]);
+
+    const { leadsTrend } = await service.getMetrics();
+
+    expect(leadsTrend).toHaveLength(14);
+    expect(leadsTrend[13]).toEqual({ date: today.toISOString().slice(0, 10), leads: 5 });
+    expect(leadsTrend[10]).toEqual({ date: threeDaysAgo.toISOString().slice(0, 10), leads: 2 });
+    expect(leadsTrend[12].leads).toBe(0);
+    const dates = leadsTrend.map((point) => point.date);
+    expect(new Set(dates).size).toBe(14);
+    expect([...dates].sort()).toEqual(dates);
   });
 
   it('splits deals by stage into open/won/lost using the stage flags, and sums only open-stage value', async () => {

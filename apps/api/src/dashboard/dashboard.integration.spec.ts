@@ -36,7 +36,7 @@ describe('Dashboard (integration)', () => {
     const { owner } = await setupOrg('dash-empty');
 
     const res = await request(server).get('/api/v1/dashboard/metrics').set('Authorization', `Bearer ${owner.accessToken}`).expect(200);
-    expect(res.body).toEqual({
+    expect(res.body).toMatchObject({
       totalLeads: 0,
       qualifiedLeads: 0,
       openDeals: 0,
@@ -45,6 +45,8 @@ describe('Dashboard (integration)', () => {
       pipelineValue: 0,
       conversionRate: 0,
     });
+    expect(res.body.leadsTrend).toHaveLength(14);
+    expect(res.body.leadsTrend.every((point: { leads: number }) => point.leads === 0)).toBe(true);
   });
 
   it('reflects real leads/deals, scoped only to the caller organization', async () => {
@@ -90,6 +92,10 @@ describe('Dashboard (integration)', () => {
       pipelineValue: 1000,
       conversionRate: 50,
     });
+    // Both leads were created just now, so today's (last) bucket holds all of them.
+    expect(res.body.leadsTrend).toHaveLength(14);
+    expect(res.body.leadsTrend[13].leads).toBe(2);
+    expect(res.body.leadsTrend.slice(0, 13).every((point: { leads: number }) => point.leads === 0)).toBe(true);
   });
 
   it("does not count another organization's leads/deals", async () => {
@@ -99,5 +105,7 @@ describe('Dashboard (integration)', () => {
 
     const res = await request(server).get('/api/v1/dashboard/metrics').set('Authorization', `Bearer ${ownerA.accessToken}`).expect(200);
     expect(res.body.totalLeads).toBe(0);
+    // The trend is a raw SQL query (not Prisma's model API) — this confirms RLS still scopes it.
+    expect(res.body.leadsTrend.every((point: { leads: number }) => point.leads === 0)).toBe(true);
   });
 });

@@ -321,6 +321,8 @@ export interface DashboardMetrics {
   lostDeals: number;
   pipelineValue: number;
   conversionRate: number;
+  // New leads per UTC day over the last 14 days, oldest first, zero-filled.
+  leadsTrend: { date: string; leads: number }[];
 }
 
 // M6 — AI Integration (FR-036–FR-041, FR-051 🔎)

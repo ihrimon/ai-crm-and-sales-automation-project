@@ -242,6 +242,7 @@ export function generateMockDashboardMetrics(): DashboardMetrics {
     lostDeals: 9,
     pipelineValue: 486500,
     conversionRate: 13.3,
+    leadsTrend: generateMockTrend(14).map(({ date, leads }) => ({ date, leads })),
   };
 }
 
