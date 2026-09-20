@@ -2,7 +2,7 @@
 
 An AI-native, automation-first CRM: lead scoring/qualification, follow-up email drafting, conversation summarization, and a trigger→condition→action automation engine with a human-approval step for AI-derived actions — built multi-tenant from the start.
 
-**Live demo:** [ai-crm-sales-automation.vercel.app](https://ai-crm-sales-automation.vercel.app) (frontend, Vercel) · API at [api-production-dd96.up.railway.app](https://api-production-dd96.up.railway.app/health) (Railway). Register a real account to try it — no seed login exists. AI features run on a deterministic stub provider (no live Anthropic key configured for this deployment yet), so scoring/qualification/email-draft results are consistent placeholders, not real model output.
+**Live demo:** [ai-crm-sales-automation.vercel.app](https://ai-crm-sales-automation.vercel.app) (frontend, Vercel) · API at [api-production-dd96.up.railway.app](https://api-production-dd96.up.railway.app/health) (Railway). Sign in with the ready-made demo account — `demo@ai-crm-demo.app` / `DemoCRM2026!` (organization owner, pre-loaded with leads, deals, a pipeline, tasks, automations and AI results; a sales-rep login `rep@ai-crm-demo.app` with the same password shows the role-restricted view) — or register your own. AI features run on a deterministic stub provider (no live Anthropic key configured for this deployment yet), so scoring/qualification/email-draft results are consistent placeholders, not real model output.
 
 **Full documentation lives in [`docs/`](docs/README.md).** Start there, not here — this file is just the entry point:
 
@@ -41,6 +41,8 @@ pnpm dev:web                   # http://localhost:3000 (or the next free port �
 ```
 
 Health check once the API is running: `curl http://localhost:34001/health`.
+
+Optional: `pnpm seed:demo` fills a local instance with the same demo organization the live site uses (goes through the real HTTP API; safe to re-run — it skips if the demo owner already exists). Point it at another deployment with `SEED_API_URL=https://<api-host>/api/v1`.
 
 > **Port note:** this machine may already have other projects' Postgres/Redis/API bound to the "usual" ports (5432, 6379, 3001), and possibly a Next.js dev server on 3000 too. `docker-compose.yml` and `.env.example` use non-default host ports (55432, 56379, 34001) to avoid colliding with them — container-internal ports are standard. `apps/web`'s dev server has no such override, so if 3000 is taken, `next dev` just shifts to 3001 (check its terminal output for the actual port). If you're on a clean machine, feel free to switch the API-side ports back.
 
