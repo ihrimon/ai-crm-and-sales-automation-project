@@ -8,9 +8,9 @@
   },
   "packageManager": "pnpm@10.22.0",
   "scripts": {
-    "dev:api": "pnpm --filter @ai-crm/api dev",
-    "dev:web": "pnpm --filter @ai-crm/web dev",
-    "build": "pnpm -r build",
+    "dev:api": "node init && pnpm --filter @ai-crm/api dev",
+    "dev:web": "node init && pnpm --filter @ai-crm/web dev",
+    "build": "node init && pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",

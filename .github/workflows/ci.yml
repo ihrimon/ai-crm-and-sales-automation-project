@@ -1,7 +1,3 @@
-# CI — Milestone M0 laid down lint+typecheck+build; Milestone M1 (Auth) added
-# the `test` step plus the Postgres service it needs for the register→login
-# integration test (docs/development-plan/README.md#m1--database--auth--size-m).
-
 name: CI
 
 on:
@@ -9,9 +5,35 @@ on:
   push:
     branches: [main]
 
+# A newer push to the same branch/PR makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Shared by the jobs that need a database. DATABASE_URL (superuser "crm") is
+# for Prisma Migrate only — it also creates the restricted "crm_app" role
+# (migration 20260827084203_..., M2), whose dev password is hardcoded in that
+# migration, so APP_DATABASE_URL must match it exactly. The app and tests
+# connect via APP_DATABASE_URL, never DATABASE_URL, so Row-Level Security is
+# actually enforced — see apps/api/src/common/prisma/prisma.service.ts.
+# The database and role names ("ai_crm", "crm") are hardcoded in that same
+# migration too, which is why the service below uses exactly those names.
+env:
+  DATABASE_URL: postgresql://crm:crm_ci_password@localhost:5432/ai_crm?schema=public
+  APP_DATABASE_URL: postgresql://crm_app:crm_app_dev_password@localhost:5432/ai_crm?schema=public
+  REDIS_URL: redis://localhost:6379
+  JWT_SECRET: ci-test-secret
+  JWT_ACCESS_TOKEN_TTL: 15m
+  JWT_REFRESH_TOKEN_TTL: 30d
+
 jobs:
-  build:
+  verify:
+    name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -23,32 +45,28 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U crm -d ai_crm"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
-
-    env:
-      # DATABASE_URL (superuser "crm") is for Prisma Migrate only — it also
-      # creates the "crm_app" role (migration 20260827084203_..., M2). That
-      # migration hardcodes crm_app's password (dev-only credential, same
-      # reasoning as "crm_dev_password" elsewhere), so APP_DATABASE_URL here
-      # must match it exactly — it isn't set by the postgres service's own
-      # env vars the way DATABASE_URL's "crm" password is. The app/tests
-      # connect via APP_DATABASE_URL, never DATABASE_URL — see
-      # apps/api/src/common/prisma/prisma.service.ts for why.
-      DATABASE_URL: postgresql://crm:crm_ci_password@localhost:5432/ai_crm?schema=public
-      APP_DATABASE_URL: postgresql://crm_app:crm_app_dev_password@localhost:5432/ai_crm?schema=public
-      JWT_SECRET: ci-test-secret
-      JWT_ACCESS_TOKEN_TTL: 15m
-      JWT_REFRESH_TOKEN_TTL: 30d
+          --health-retries 10
+      # The AI and automation queues (BullMQ) need Redis — the integration
+      # tests exercise them for real, not against a mock.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here — pnpm/action-setup reads the `packageManager`
+      # field in package.json, and errors out if both are given.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -57,12 +75,119 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm db:generate
+
       - run: pnpm lint
 
       - run: pnpm typecheck
 
       - run: pnpm --filter @ai-crm/api prisma:deploy
 
-      - run: pnpm test
+      # Only the API package has tests here; apps/e2e is Playwright and runs
+      # in its own job below, against real running servers.
+      - name: Unit and integration tests (real Postgres + Redis)
+        run: pnpm --filter @ai-crm/api test
 
       - run: pnpm build
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm_ci_password
+          POSTGRES_DB: ai_crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crm -d ai_crm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # apps/e2e expects the API on :34001 and the web app on :3000 (see
+      # apps/e2e/tests/helpers.ts). PORT is set on the API command below, not
+      # here — `next start` reads PORT too and would collide with it.
+      CORS_ORIGIN: http://localhost:3000
+      # Every journey registers real users from one IP; the default 100
+      # requests/minute limit is for abuse, not for a test runner.
+      RATE_LIMIT_LIMIT: 100000
+      # Next.js inlines NEXT_PUBLIC_* at build time, so this has to be set
+      # for the web build below, not just at runtime.
+      NEXT_PUBLIC_API_URL: http://localhost:34001/api/v1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm db:generate
+
+      - run: pnpm --filter @ai-crm/api prisma:deploy
+
+      - run: pnpm --filter @ai-crm/api build
+
+      - run: pnpm --filter @ai-crm/web build
+
+      - name: Install Playwright's Chromium
+        run: pnpm --filter @ai-crm/e2e exec playwright install --with-deps chromium
+
+      - name: Start the API and web servers
+        run: |
+          PORT=34001 node apps/api/dist/main.js > api.log 2>&1 &
+          pnpm --filter @ai-crm/web start > web.log 2>&1 &
+          for i in $(seq 1 60); do
+            api=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:34001/health || true)
+            web=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/login || true)
+            if [ "$api" = "200" ] && [ "$web" = "200" ]; then echo "both servers up after ${i} checks"; exit 0; fi
+            sleep 2
+          done
+          echo "servers did not come up (api=$api web=$web)"; tail -n 40 api.log web.log; exit 1
+
+      - run: pnpm test:e2e
+
+      - name: Upload Playwright traces and server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            apps/e2e/test-results
+            api.log
+            web.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The API is deployed from this Dockerfile (Railway); building it on
+      # every push catches a broken deploy before it happens, not after.
+      - run: docker build -t ai-crm-api:ci .

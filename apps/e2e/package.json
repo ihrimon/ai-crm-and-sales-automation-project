@@ -7,7 +7,7 @@
     "test:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"tests/**/*.ts\"",
-    "build": "echo \"@ai-crm/e2e: nothing to build\""
+    "build": "node init && echo \"@ai-crm/e2e: nothing to build\""
   },
   "dependencies": {
     "@ai-crm/types": "workspace:*"

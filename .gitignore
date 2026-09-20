@@ -9,8 +9,6 @@ build/
 out/
 
 # Env
-.env
-.env.local
 .env.*.local
 
 # Prisma
@@ -33,7 +31,6 @@ pnpm-debug.log*
 Thumbs.db
 
 # Editor
-.vscode/*
 !.vscode/extensions.json
 .idea/
 
@@ -47,4 +44,4 @@ Thumbs.db
 !/README.md
 
 .vercel
-.env*
+config.bat
